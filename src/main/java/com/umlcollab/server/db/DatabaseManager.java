@@ -18,12 +18,16 @@ public class DatabaseManager {
     public void connect() {
         String url = "jdbc:mysql://localhost:3306/uml_editor"; // match your DB name
         String user = "root";
-        String password = "Aniruktha@123";
-
+        String password = System.getenv("DB_PASSWORD");
+        if (password == null || password.isEmpty()) {
+            throw new IllegalStateException("DB_PASSWORD env var must be set!");  // Fail fast, prompt user to set it
+        }
+        //String password="Aniruktha@123";
         try {
             connection = DriverManager.getConnection(url, user, password);
             System.out.println("Database connected successfully.");
         } catch (SQLException e) {
+            System.err.println("DEBUG: SQL Error Details: " + e.getMessage());  // Extra detail
             e.printStackTrace();
             System.err.println("Database connection failed!");
         }
