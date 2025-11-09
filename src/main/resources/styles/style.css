@@ -1,0 +1,113 @@
+/* ========================
+   GENERAL APP BACKGROUND
+======================== */
+.root {
+    -fx-background-color: linear-gradient(to bottom right, #74b9ff, #a29bfe);
+    -fx-font-family: "Segoe UI", "Roboto", sans-serif;
+}
+
+/* ========================
+   LOGIN CONTAINER (CARD)
+======================== */
+.login-card {
+    -fx-background-color: white;
+    -fx-background-radius: 15px;
+    -fx-padding: 40px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.25), 15, 0, 0, 6);
+    -fx-min-width: 350px;
+}
+
+/* ========================
+   TITLE LABEL
+======================== */
+.label-title {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2c3e50;
+}
+
+/* ========================
+   TEXT FIELDS
+======================== */
+.text-field, .password-field {
+    -fx-background-radius: 8px;
+    -fx-border-radius: 8px;
+    -fx-border-color: #dfe6e9;
+    -fx-padding: 10px;
+    -fx-font-size: 14px;
+    -fx-background-color: #f5f6fa;
+}
+
+/* ========================
+   BUTTONS
+======================== */
+.button-login {
+    -fx-background-color: #0984e3;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8px;
+    -fx-padding: 10px 25px;
+    -fx-cursor: hand;
+    -fx-font-size: 14px;
+    -fx-transition: 0.3s;
+}
+
+.button-login:hover {
+    -fx-background-color: #74b9ff;
+}
+
+.button-signup {
+    -fx-background-color: #00b894;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8px;
+    -fx-padding: 10px 25px;
+    -fx-cursor: hand;
+    -fx-font-size: 14px;
+}
+
+.button-signup:hover {
+    -fx-background-color: #55efc4;
+}
+
+/* ========================
+   MESSAGE LABEL
+======================== */
+.label-message {
+    -fx-font-size: 13px;
+}
+
+
+/* ========================
+   SIGNUP PAGE (REGISTER)
+======================== */
+.signup-card {
+    -fx-background-color: white;
+    -fx-background-radius: 15px;
+    -fx-padding: 40px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.25), 15, 0, 0, 6);
+    -fx-min-width: 350px;
+}
+
+.label-signup-title {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2c3e50;
+}
+
+.button-register {
+    -fx-background-color: #27AE60;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8px;
+    -fx-padding: 10px 25px;
+    -fx-cursor: hand;
+}
+
+.button-register:hover {
+    -fx-background-color: #2ECC71;
+}
+
+.label-signup-message {
+    -fx-font-size: 13px;
+}
