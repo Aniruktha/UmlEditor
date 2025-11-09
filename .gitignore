@@ -28,3 +28,16 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+# Maven/Build
+target/
+*.log
+
+# Secrets
+setup-env.ps1  # Your local script
+.env
+*.properties
+
+# IDE
+.idea/
+*.iml
