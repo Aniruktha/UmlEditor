@@ -267,15 +267,15 @@ public class DatabaseManager {
         return diagrams;
     }
 
-    public boolean updateNotebookContent(int diagramId, byte[] content) throws SQLException {
+    public boolean updateNotebookContent(int diagramId, String content) throws SQLException {
         String sql = "UPDATE UML_Diagrams SET content = ?, last_modified = NOW() WHERE diagram_id = ?";
 
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-            if (content != null) {
-                stmt.setBytes(1, content);
+            if (content != null && !content.isEmpty()) {
+                stmt.setString(1, content);
             } else {
-                stmt.setNull(1, Types.BLOB);
+                stmt.setNull(1, Types.LONGVARCHAR);
             }
             stmt.setInt(2, diagramId);
             return stmt.executeUpdate() > 0;
@@ -444,7 +444,7 @@ public class DatabaseManager {
              PreparedStatement stmt = conn.prepareStatement(insert, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, src.getDiagramName());
             stmt.setInt(2, recipientUserId);
-            if (src.getContent() != null) stmt.setBytes(3, src.getContent()); else stmt.setNull(3, Types.BLOB);
+            if (src.getContent() != null) stmt.setString(3, src.getContent()); else stmt.setNull(3, Types.LONGVARCHAR);
             int rows = stmt.executeUpdate();
             if (rows == 0) {
                 setLastError("Duplicate insert affected 0 rows");
@@ -480,7 +480,7 @@ public class DatabaseManager {
         }
 
         diagram.setMongoId(rs.getString("mongo_id"));
-        diagram.setContent(rs.getBytes("content"));
+        diagram.setContent(rs.getString("content"));
 
         Timestamp ts = rs.getTimestamp("last_modified");
         if (ts != null) {

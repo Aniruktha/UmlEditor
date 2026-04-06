@@ -2,6 +2,7 @@ package com.umlcollab.client.views;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
 import com.umlcollab.server.db.DatabaseManager;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -34,9 +35,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.lang.reflect.Type;
 import java.net.URI;
 import java.sql.SQLException;
 import java.util.ArrayDeque;
@@ -63,7 +63,7 @@ public class NotebooksPage extends Application {
     private String notebookName;
     private Integer notebookId;
     private DatabaseManager dbManager;
-    private byte[] initialContent;
+    private String initialContent;
     private boolean dirty = false;
     private boolean loadingState = false;
     private HBox saveNotificationBar;
@@ -264,28 +264,22 @@ public class NotebooksPage extends Application {
     }
 
     private String captureCurrentStateBytes() {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
-            oos.writeObject(captureCurrentState());
-            return new String(bos.toByteArray());
-        } catch (IOException e) {
-            e.printStackTrace();
-            return "";
-        }
+        List<ShapeState> states = captureCurrentState();
+        return gson.toJson(states);
     }
 
     private void loadFromJson(String jsonContent) {
-        // Parse JSON to ShapeStates and add to canvas
-        // For simplicity, deserialize as before, but adapt if needed
+        if (jsonContent == null || jsonContent.isEmpty()) {
+            setDirty(false);
+            return;
+        }
+        
         try {
-            // Assume jsonContent is base64 or stringified object; adjust as per server
-            byte[] bytes = jsonContent.getBytes();
-            try (ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
-                 ObjectInputStream ois = new ObjectInputStream(bis)) {
-                @SuppressWarnings("unchecked")
-                List<ShapeState> states = (List<ShapeState>) ois.readObject();
+            Type listType = new TypeToken<List<ShapeState>>(){}.getType();
+            List<ShapeState> states = gson.fromJson(jsonContent, listType);
+            if (states != null) {
                 loadingState = true;
-                clearCanvas(); // Clear and reload for sync
+                clearCanvas();
                 for (ShapeState state : states) {
                     addShapeFromState(state);
                 }
@@ -933,28 +927,19 @@ public class NotebooksPage extends Application {
 
         try {
             List<ShapeState> states = captureCurrentState();
-            byte[] payload;
-            try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                 ObjectOutputStream oos = new ObjectOutputStream(bos)) {
-                oos.writeObject(states);
-                oos.flush();
-                payload = bos.toByteArray();
-            }
+            String jsonContent = gson.toJson(states);
 
-            boolean success = dbManager.updateNotebookContent(notebookId, payload);
+            boolean success = dbManager.updateNotebookContent(notebookId, jsonContent);
             if (success) {
                 setDirty(false);
-                initialContent = payload;
+                initialContent = jsonContent;
             } else {
                 new Alert(Alert.AlertType.ERROR, "Failed to save notebook. Please try again.", ButtonType.OK).showAndWait();
             }
             return success;
-        } catch (IOException e) {
-            e.printStackTrace();
-            new Alert(Alert.AlertType.ERROR, "Error while saving notebook: " + e.getMessage(), ButtonType.OK).showAndWait();
-            return false;
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            new Alert(Alert.AlertType.ERROR, "Error saving notebook: " + e.getMessage(), ButtonType.OK).showAndWait();
+            return false;
         }
     }
 
@@ -998,19 +983,17 @@ public class NotebooksPage extends Application {
         return states;
     }
 
-    @SuppressWarnings("unchecked")
     private void loadNotebookContent() {
-        if (initialContent == null || initialContent.length == 0) {
+        if (initialContent == null || initialContent.isEmpty()) {
             setDirty(false);
             return;
         }
 
-        try (ByteArrayInputStream bis = new ByteArrayInputStream(initialContent);
-             ObjectInputStream ois = new ObjectInputStream(bis)) {
-            Object obj = ois.readObject();
-            if (obj instanceof List<?>) {
+        try {
+            Type listType = new TypeToken<List<ShapeState>>(){}.getType();
+            List<ShapeState> states = gson.fromJson(initialContent, listType);
+            if (states != null) {
                 loadingState = true;
-                List<ShapeState> states = (List<ShapeState>) obj;
                 for (ShapeState state : states) {
                     addShapeFromState(state);
                 }
@@ -1164,8 +1147,8 @@ public class NotebooksPage extends Application {
         this.notebookId = notebookId;
     }
 
-    public void setInitialContent(byte[] initialContent) {
-        this.initialContent = initialContent != null ? initialContent.clone() : null;
+    public void setInitialContent(String initialContent) {
+        this.initialContent = initialContent != null ? initialContent : null;
     }
 
     public void setUserId(int userId) {

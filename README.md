@@ -8,7 +8,13 @@ A real-time collaborative UML diagram editor built with JavaFX and Java 17. The 
 
 ## Overview
 
-This project is a full-featured desktop UML diagram editor with real-time collaboration capabilities. It follows a client-server architecture where the server manages WebSocket connections for real-time synchronization while the client provides a rich JavaFX-based graphical interface for diagram creation.
+This project is a desktop UML diagram editor with real-time collaboration capabilities. It follows a client-server architecture where the server manages WebSocket connections for real-time synchronization while the client provides a rich JavaFX-based graphical interface for diagram creation.
+
+### Key Capabilities
+- **JavaFX-based UI**: Native desktop application with drag-and-drop shape and relationship creation
+- **JSON Persistence**: Diagrams stored as JSON in MySQL LONGTEXT columns
+- **Real-time Collaboration**: WebSocket-based synchronized simultaneous editing by network-connected clients
+- **MVC Architecture**: Clean separation of Model, View, and Controller layers
 
 ## Features
 
@@ -167,7 +173,7 @@ CREATE TABLE UML_Diagrams (
     project_id INT,
     owner_id INT,
     mongo_id VARCHAR(50),
-    content MEDIUMBLOB,
+    content LONGTEXT,
     last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 

@@ -135,7 +135,7 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         if (dbManager != null) {
             UMLDiagram diagram = dbManager.getDiagramById(diagramId);
             if (diagram != null && diagram.getContent() != null) {
-                initialState = new String(diagram.getContent());
+                initialState = diagram.getContent();
             }
         }
         response.addProperty("content", initialState);
@@ -170,10 +170,9 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         // Save content (in production, consider delta merge)
         if (json.has("newContent")) {
             String newContentStr = json.get("newContent").getAsString();
-            byte[] newContent = newContentStr.getBytes();
             
             if (dbManager != null) {
-                boolean saved = dbManager.updateNotebookContent(diagramId, newContent);
+                boolean saved = dbManager.updateNotebookContent(diagramId, newContentStr);
                 if (!saved) {
                     sendError(conn, "Failed to save edit");
                     return;

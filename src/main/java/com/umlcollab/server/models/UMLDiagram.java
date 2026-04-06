@@ -1,22 +1,20 @@
 package com.umlcollab.server.models;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
 
 public class UMLDiagram {
     private int diagramId;
     private String diagramName;
-    private Integer projectId;   // can be null
-    private Integer ownerId;     // can be null
-    private String mongoId;      // existing column, may be null
-    private byte[] content;      // content column (MEDIUMBLOB) - PNG or JSON bytes
+    private Integer projectId;
+    private Integer ownerId;
+    private String mongoId;
+    private String content;
     private LocalDateTime lastModified;
-    private String accessRole;   // OWNER, EDITOR, VIEWER depending on access context
+    private String accessRole;
 
     public UMLDiagram() {}
 
-    // Constructor for creating new diagram before DB insert
-    public UMLDiagram(String diagramName, Integer projectId, Integer ownerId, String mongoId, byte[] content) {
+    public UMLDiagram(String diagramName, Integer projectId, Integer ownerId, String mongoId, String content) {
         this.diagramName = diagramName;
         this.projectId = projectId;
         this.ownerId = ownerId;
@@ -24,8 +22,7 @@ public class UMLDiagram {
         this.content = content;
     }
 
-    // Full constructor with id
-    public UMLDiagram(int diagramId, String diagramName, Integer projectId, Integer ownerId, String mongoId, byte[] content, LocalDateTime lastModified) {
+    public UMLDiagram(int diagramId, String diagramName, Integer projectId, Integer ownerId, String mongoId, String content, LocalDateTime lastModified) {
         this.diagramId = diagramId;
         this.diagramName = diagramName;
         this.projectId = projectId;
@@ -35,7 +32,6 @@ public class UMLDiagram {
         this.lastModified = lastModified;
     }
 
-    // ===== Getters and setters =====
     public int getDiagramId() { return diagramId; }
     public void setDiagramId(int diagramId) { this.diagramId = diagramId; }
 
@@ -51,8 +47,8 @@ public class UMLDiagram {
     public String getMongoId() { return mongoId; }
     public void setMongoId(String mongoId) { this.mongoId = mongoId; }
 
-    public byte[] getContent() { return content; }
-    public void setContent(byte[] content) { this.content = content; }
+    public String getContent() { return content; }
+    public void setContent(String content) { this.content = content; }
 
     public LocalDateTime getLastModified() { return lastModified; }
     public void setLastModified(LocalDateTime lastModified) { this.lastModified = lastModified; }
@@ -68,7 +64,7 @@ public class UMLDiagram {
                 ", projectId=" + projectId +
                 ", ownerId=" + ownerId +
                 ", mongoId='" + mongoId + '\'' +
-                ", content=" + (content == null ? "null" : content.length + " bytes") +
+                ", content=" + (content == null ? "null" : content.length() + " chars") +
                 ", lastModified=" + lastModified +
                 ", accessRole='" + accessRole + '\'' +
                 '}';
@@ -78,7 +74,6 @@ public class UMLDiagram {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-
         UMLDiagram that = (UMLDiagram) o;
         return diagramId == that.diagramId;
     }

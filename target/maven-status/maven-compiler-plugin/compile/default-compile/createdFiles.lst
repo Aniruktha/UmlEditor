@@ -29,12 +29,14 @@ com\umlcollab\client\ClientApp.class
 com\umlcollab\client\views\NotebooksPage$9.class
 com\umlcollab\client\views\NotebooksPage$11.class
 com\umlcollab\client\views\NotebooksPage$16.class
+com\umlcollab\client\views\NotebooksPage$26.class
 com\umlcollab\client\views\NotebooksPage$4.class
 com\umlcollab\client\views\NotebooksPage$22.class
 com\umlcollab\server\models\UMLDiagram.class
 com\umlcollab\client\views\NotebooksPage$7.class
 com\umlcollab\client\views\NotebooksPage$19.class
 com\umlcollab\client\views\NotebooksPage$21.class
+com\umlcollab\client\views\NotebooksPage$27.class
 com\umlcollab\server\websocket\UMLWebSocketServer.class
 com\umlcollab\server\db\DatabaseManager.class
 com\umlcollab\client\views\NotebooksPage$ArrowLine.class
