@@ -7,6 +7,7 @@ com\umlcollab\client\views\NotebooksPage$15.class
 com\umlcollab\server\ServerMain.class
 com\umlcollab\client\views\NotebooksPage$3.class
 com\umlcollab\client\views\NotebooksPage$17.class
+com\umlcollab\server\services\AuthService$RegistrationResult.class
 com\umlcollab\client\views\NotebooksPage$Command.class
 com\umlcollab\client\views\NotebooksPage.class
 com\umlcollab\client\views\NotebooksPage$12.class
@@ -21,18 +22,17 @@ com\umlcollab\client\views\NotebooksPage$6.class
 com\umlcollab\client\views\NotebooksPage$20.class
 com\umlcollab\client\views\SigninPage.class
 com\umlcollab\client\views\NotebooksPage$10.class
+com\umlcollab\server\services\AuthService$LoginResult.class
 com\umlcollab\client\views\LoginPage.class
 com\umlcollab\client\views\NotebooksPage$ShapeType.class
 com\umlcollab\client\ClientApp.class
 com\umlcollab\client\views\NotebooksPage$9.class
 com\umlcollab\client\views\NotebooksPage$11.class
 com\umlcollab\client\views\NotebooksPage$16.class
-com\umlcollab\client\views\NotebooksPage$26.class
 com\umlcollab\client\views\NotebooksPage$4.class
 com\umlcollab\client\views\NotebooksPage$22.class
 com\umlcollab\server\models\UMLDiagram.class
 com\umlcollab\client\views\NotebooksPage$7.class
-com\umlcollab\server\db\MongoManager.class
 com\umlcollab\client\views\NotebooksPage$19.class
 com\umlcollab\client\views\NotebooksPage$21.class
 com\umlcollab\server\websocket\UMLWebSocketServer.class

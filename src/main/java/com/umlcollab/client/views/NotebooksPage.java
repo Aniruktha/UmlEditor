@@ -426,7 +426,7 @@ public class NotebooksPage extends Application {
         deleteItem.setAccelerator(new KeyCodeCombination(KeyCode.DELETE));
         editMenu.getItems().addAll(undoItem, redoItem, new SeparatorMenuItem(), deleteItem);
 
-        menuBar.getMenus().addAll(fileMenu, editMenu, new Menu("Extras"), new Menu("Help"));
+        menuBar.getMenus().addAll(fileMenu, editMenu);
         return menuBar;
     }
 
@@ -833,7 +833,36 @@ public class NotebooksPage extends Application {
     private void deselectNode() { if (selectedNode != null) { selectedNode.setEffect(null); selectedNode = null; } }
     private void setZoom(double newZoom) { newZoom = Math.max(0.25, Math.min(newZoom, 4.0)); canvasZoom = newZoom; centerArea.setScaleX(canvasZoom); centerArea.setScaleY(canvasZoom); zoomLabel.setText(Math.round(canvasZoom * 100) + "%"); }
     private void togglePageView(boolean enabled) { if (enabled) { centerArea.setStyle("-fx-background-color: #D3D3D3;"); canvas.setStyle("-fx-background-color: white;"); canvas.setEffect(new DropShadow(10, Color.rgb(0, 0, 0, 0.3))); } else { centerArea.setStyle("-fx-background-color: white;"); canvas.setStyle("-fx-background-color: white;"); canvas.setEffect(null); } }
-    private TabPane createRightSidebar() { TabPane rightSidebar = new TabPane(); rightSidebar.setPrefWidth(250); Tab diagramTab = new Tab("Diagram"); diagramTab.setClosable(false); CheckBox gridCheckBox = new CheckBox("Grid"); gridCheckBox.setSelected(true); gridCheckBox.setOnAction(e -> gridPane.setVisible(gridCheckBox.isSelected())); CheckBox pageViewCheckBox = new CheckBox("Page View"); pageViewCheckBox.setSelected(true); pageViewCheckBox.setOnAction(e -> togglePageView(pageViewCheckBox.isSelected())); VBox diagramControls = new VBox(15); diagramControls.setPadding(new Insets(15)); diagramControls.getChildren().addAll( new Label("View"){{setStyle("-fx-font-weight: bold;");}}, gridCheckBox, pageViewCheckBox, new CheckBox("Connection Arrows"){{setSelected(true);}}, new Separator(), new Label("Paper Size"){{setStyle("-fx-font-weight: bold;");}}, new ComboBox<String>() {{ getItems().addAll("US-Letter (8.5\" x 11\")"); setValue("US-Letter (8.5\" x 11\")"); }}, new Button("Clear Default Style") ); diagramTab.setContent(diagramControls); Tab styleTab = new Tab("Style"); styleTab.setClosable(false); styleTab.setContent(new VBox(new Label("Style options will go here.")) {{ setPadding(new Insets(15)); }}); rightSidebar.getTabs().addAll(diagramTab, styleTab); return rightSidebar; }
+    private TabPane createRightSidebar() { 
+        TabPane rightSidebar = new TabPane(); 
+        rightSidebar.setPrefWidth(250); 
+        
+        // Diagram Tab
+        Tab diagramTab = new Tab("Diagram"); 
+        diagramTab.setClosable(false); 
+        CheckBox gridCheckBox = new CheckBox("Grid"); 
+        gridCheckBox.setSelected(true); 
+        gridCheckBox.setOnAction(e -> gridPane.setVisible(gridCheckBox.isSelected())); 
+        CheckBox pageViewCheckBox = new CheckBox("Page View"); 
+        pageViewCheckBox.setSelected(true); 
+        pageViewCheckBox.setOnAction(e -> togglePageView(pageViewCheckBox.isSelected())); 
+        
+        VBox diagramControls = new VBox(15); 
+        diagramControls.setPadding(new Insets(15)); 
+        diagramControls.getChildren().addAll( 
+            new Label("View"){{setStyle("-fx-font-weight: bold;");}}, 
+            gridCheckBox, 
+            pageViewCheckBox, 
+            new CheckBox("Connection Arrows"){{setSelected(true);}}, 
+            new Separator(), 
+            new Label("Paper Size"){{setStyle("-fx-font-weight: bold;");}}, 
+            new ComboBox<String>() {{ getItems().addAll("US-Letter (8.5\" x 11\")"); setValue("US-Letter (8.5\" x 11\")"); }}
+        ); 
+        diagramTab.setContent(diagramControls); 
+        
+        rightSidebar.getTabs().addAll(diagramTab); 
+        return rightSidebar; 
+    }
     private Node createDraggableShape(final ShapeType type, Node node) {
         StackPane container = new StackPane(node);
         container.setAlignment(Pos.CENTER);

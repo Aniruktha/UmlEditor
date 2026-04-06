@@ -2,8 +2,12 @@ package com.umlcollab.server.db;
 
 import com.umlcollab.server.models.UMLDiagram;
 import com.umlcollab.server.models.User;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import org.mindrot.jbcrypt.BCrypt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.security.MessageDigest;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -12,29 +16,68 @@ import java.util.List;
 import java.util.Map;
 
 public class DatabaseManager {
-    private Connection connection;
+    private static final Logger logger = LoggerFactory.getLogger(DatabaseManager.class);
+    
+    private HikariDataSource dataSource;
     private String lastError;
 
     public void connect() {
-        String url = "jdbc:mysql://localhost:3306/uml_editor"; // match your DB name
+        String url = "jdbc:mysql://localhost:3306/uml_editor";
         String user = "root";
         String password = System.getenv("DB_PASSWORD");
+        
         if (password == null || password.isEmpty()) {
-            throw new IllegalStateException("DB_PASSWORD env var must be set!");  // Fail fast, prompt user to set it
+            throw new IllegalStateException("DB_PASSWORD env var must be set!");
         }
-        //String password="Aniruktha@123";
+
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(url);
+        config.setUsername(user);
+        config.setPassword(password);
+        config.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        
+        // Connection pool settings
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setIdleTimeout(300000);
+        config.setConnectionTimeout(20000);
+        config.setMaxLifetime(1800000);
+        
+        // Performance optimizations
+        config.addDataSourceProperty("cachePrepStmts", "true");
+        config.addDataSourceProperty("prepStmtCacheSize", "250");
+        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+        
         try {
-            connection = DriverManager.getConnection(url, user, password);
-            System.out.println("Database connected successfully.");
-        } catch (SQLException e) {
-            System.err.println("DEBUG: SQL Error Details: " + e.getMessage());  // Extra detail
-            e.printStackTrace();
-            System.err.println("Database connection failed!");
+            dataSource = new HikariDataSource(config);
+            logger.info("Database connected successfully with connection pooling");
+        } catch (Exception e) {
+            logger.error("Database connection failed: {}", e.getMessage());
+            throw new RuntimeException("Failed to connect to database", e);
         }
     }
 
     public Connection getConnection() {
-        return connection;
+        if (dataSource == null) {
+            throw new IllegalStateException("Database not initialized. Call connect() first.");
+        }
+        try {
+            Connection conn = dataSource.getConnection();
+            if (conn.isClosed()) {
+                throw new IllegalStateException("Connection is closed");
+            }
+            return conn;
+        } catch (SQLException e) {
+            logger.error("Failed to get connection from pool", e);
+            throw new RuntimeException("Failed to get database connection", e);
+        }
+    }
+
+    public void close() {
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+            logger.info("Database connection pool closed");
+        }
     }
 
     public String getLastError() {
@@ -44,27 +87,30 @@ public class DatabaseManager {
     private void setLastError(String message) {
         this.lastError = message;
         if (message != null) {
-            System.err.println(message);
+            logger.warn(message);
         }
     }
 
     public boolean saveUser(User user) {
         String query = "INSERT INTO Users (username, email, password) VALUES (?, ?, ?)";
-        try (PreparedStatement stmt = connection.prepareStatement(query)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
             stmt.setString(1, user.getUsername());
             stmt.setString(2, user.getEmail());
             stmt.setString(3, user.getPassword());
             stmt.executeUpdate();
+            logger.info("User created: {}", user.getUsername());
             return true;
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.error("Failed to save user: {}", e.getMessage());
             return false;
         }
     }
 
     public User getUserByUsername(String username) {
         String sql = "SELECT * FROM Users WHERE username = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, username);
             ResultSet rs = stmt.executeQuery();
 
@@ -77,7 +123,7 @@ public class DatabaseManager {
                 return new User(id, username, email, password, createdAt);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.error("Error fetching user by username: {}", e.getMessage());
         }
         return null;
     }
@@ -87,12 +133,9 @@ public class DatabaseManager {
             return null;
         }
 
-        if (!ensureConnection()) {
-            return null;
-        }
-
         String sql = "SELECT * FROM Users WHERE email = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, email.trim());
             ResultSet rs = stmt.executeQuery();
 
@@ -105,21 +148,64 @@ public class DatabaseManager {
                 return new User(id, username, email.trim(), password, createdAt);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.error("Error fetching user by email: {}", e.getMessage());
         }
-
         return null;
     }
 
     public String hashPassword(String password) {
+        // BCrypt generates a 60-character hash with salt
+        return org.mindrot.jbcrypt.BCrypt.hashpw(password, BCrypt.gensalt(12));
+    }
+
+    public boolean verifyPassword(String password, String hashedPassword) {
+        if (hashedPassword == null || password == null) {
+            return false;
+        }
+        
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            // Check if it's a BCrypt hash (starts with $2a$, $2b$, or $2y$)
+            if (hashedPassword.length() == 60 && hashedPassword.startsWith("$2")) {
+                return BCrypt.checkpw(password, hashedPassword);
+            }
+            
+            // Fallback: Check if it's an old SHA-256 hash (for backward compatibility)
+            String sha256Hash = hashPasswordSHA256(password);
+            if (hashedPassword.equals(sha256Hash)) {
+                return true;
+            }
+            
+            return false;
+        } catch (Exception e) {
+            logger.error("Error verifying password", e);
+            return false;
+        }
+    }
+    
+    public boolean updatePasswordHash(int userId, String newHash) {
+        String sql = "UPDATE Users SET password = ? WHERE user_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, newHash);
+            stmt.setInt(2, userId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            logger.error("Error updating password hash", e);
+            return false;
+        }
+    }
+    
+    // Legacy SHA-256 hashing for backward compatibility
+    private String hashPasswordSHA256(String password) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
             byte[] hashed = md.digest(password.getBytes("UTF-8"));
             StringBuilder sb = new StringBuilder();
             for (byte b : hashed) sb.append(String.format("%02x", b));
             return sb.toString();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            logger.error("Error creating SHA-256 hash", e);
+            return null;
         }
     }
 
@@ -128,54 +214,43 @@ public class DatabaseManager {
             throw new IllegalArgumentException("diagramName cannot be null or blank");
         }
 
-        if (!ensureConnection()) {
-            setLastError("Unable to create notebook because database connection is null.");
-            return -1;
-        }
-
-        // Create personal notebook with project_id = NULL
         String sql = "INSERT INTO UML_Diagrams (diagram_name, owner_id, last_modified) VALUES (?, ?, NOW())";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, diagramName);
             stmt.setInt(2, ownerId);
 
             int affectedRows = stmt.executeUpdate();
 
             if (affectedRows == 0) {
-                System.err.println("Creating notebook failed, no rows affected.");
+                logger.error("Creating notebook failed, no rows affected.");
                 return -1;
             }
 
             try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
                 if (generatedKeys.next()) {
                     int newDiagramId = generatedKeys.getInt(1);
-                    // Optional: Log creation
                     logDiagramHistory(newDiagramId, ownerId, "Created new diagram");
+                    logger.info("Created notebook: {} with ID: {}", diagramName, newDiagramId);
                     return newDiagramId;
                 }
             }
-
             return -1;
         } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error creating notebook: " + e.getMessage());
-            return -1;
+            logger.error("SQL error creating notebook: {}", e.getMessage());
+            throw e;
         }
     }
 
     public List<UMLDiagram> getNotebooksByOwner(int ownerId) throws SQLException {
         List<UMLDiagram> diagrams = new ArrayList<>();
 
-        if (!ensureConnection()) {
-            setLastError("Unable to fetch notebooks because database connection is null.");
-            return diagrams;
-        }
-
         String sql = "SELECT diagram_id, diagram_name, project_id, owner_id, mongo_id, content, last_modified " +
                 "FROM UML_Diagrams WHERE owner_id = ? ORDER BY last_modified DESC";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, ownerId);
 
             try (ResultSet rs = stmt.executeQuery()) {
@@ -186,51 +261,33 @@ public class DatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error fetching notebooks: " + e.getMessage());
+            logger.error("SQL error fetching notebooks: {}", e.getMessage());
+            throw e;
         }
-
         return diagrams;
     }
 
     public boolean updateNotebookContent(int diagramId, byte[] content) throws SQLException {
-        if (!ensureConnection()) {
-            setLastError("Unable to save notebook because database connection is null.");
-            return false;
-        }
-
         String sql = "UPDATE UML_Diagrams SET content = ?, last_modified = NOW() WHERE diagram_id = ?";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             if (content != null) {
                 stmt.setBytes(1, content);
             } else {
                 stmt.setNull(1, Types.BLOB);
             }
             stmt.setInt(2, diagramId);
-            int updated = stmt.executeUpdate();
-            if (updated > 0) {
-                // Optional: Log update (pass userId from caller)
-                // logDiagramHistory(diagramId, currentUserId, "Updated content");
-            }
-            return updated > 0;
+            return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error updating notebook: " + e.getMessage());
-            return false;
+            logger.error("SQL error updating notebook: {}", e.getMessage());
+            throw e;
         }
     }
 
     public List<UMLDiagram> getAccessibleNotebooks(int userId) throws SQLException {
         List<UMLDiagram> diagrams = new ArrayList<>();
 
-        if (!ensureConnection()) {
-            setLastError("Unable to fetch accessible notebooks: no DB connection");
-            return diagrams;
-        }
-
-        // SQL: Owned diagrams + those in projects where user is member
-        // Use CASE for role: OWNER if direct owner, else member's role
         String sql = """
             SELECT DISTINCT d.diagram_id, d.diagram_name, d.project_id, d.owner_id, d.mongo_id, d.content, d.last_modified,
                    CASE 
@@ -244,12 +301,13 @@ public class DatabaseManager {
             ORDER BY d.last_modified DESC
             """;
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             int paramIndex = 1;
-            stmt.setInt(paramIndex++, userId); // For owner check
-            stmt.setInt(paramIndex++, userId); // For pm.user_id in JOIN
-            stmt.setInt(paramIndex++, userId); // For owned WHERE
-            stmt.setInt(paramIndex, userId);   // For shared WHERE
+            stmt.setInt(paramIndex++, userId);
+            stmt.setInt(paramIndex++, userId);
+            stmt.setInt(paramIndex++, userId);
+            stmt.setInt(paramIndex, userId);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
@@ -259,10 +317,9 @@ public class DatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error fetching accessible notebooks: " + e.getMessage());
+            logger.error("SQL error fetching accessible notebooks: {}", e.getMessage());
+            throw e;
         }
-
         return diagrams;
     }
 
@@ -272,19 +329,12 @@ public class DatabaseManager {
             return false;
         }
 
-        if (!ensureConnection()) {
-            setLastError("Unable to share notebook because database connection is null.");
-            return false;
-        }
-
-        // Validate ownership
         UMLDiagram diagram = getDiagramById(diagramId);
         if (diagram == null || diagram.getOwnerId() != ownerId) {
             setLastError("User " + ownerId + " is not the owner of diagram " + diagramId);
             return false;
         }
 
-        // Ensure diagram has a project (create if needed)
         int effectiveProjectId;
         if (projectId != null) {
             effectiveProjectId = projectId;
@@ -295,48 +345,38 @@ public class DatabaseManager {
             }
         }
 
-        // Add recipient as member to project
         boolean added = addMemberToProject(effectiveProjectId, recipientUserId, role);
 
         if (added) {
-            // Log sharing
             logDiagramHistory(diagramId, ownerId, "Shared with user " + recipientUserId + " as " + role);
             setLastError(null);
+            logger.info("Shared notebook {} with user {} as {}", diagramId, recipientUserId, role);
             return true;
         }
-
         return false;
     }
 
     private int createProjectForDiagramIfNeeded(int diagramId, int ownerId, String projectName) throws SQLException {
-        if (!ensureConnection()) {
-            setLastError("Unable to create project: no DB connection");
-            return -1;
-        }
-
-        // Check if diagram already has project
         String checkSql = "SELECT project_id FROM UML_Diagrams WHERE diagram_id = ?";
         Integer existingProjectId = null;
-        try (PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
+        
+        try (Connection conn = getConnection();
+             PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
             checkStmt.setInt(1, diagramId);
             try (ResultSet rs = checkStmt.executeQuery()) {
                 if (rs.next()) {
                     existingProjectId = rs.getObject("project_id", Integer.class);
                 }
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error checking project: " + e.getMessage());
-            return -1;
         }
 
         if (existingProjectId != null) {
-            return existingProjectId; // Already has one
+            return existingProjectId;
         }
 
-        // Create new project
         String createProjectSql = "INSERT INTO Projects (project_name, owner_id) VALUES (?, ?)";
-        try (PreparedStatement projectStmt = connection.prepareStatement(createProjectSql, Statement.RETURN_GENERATED_KEYS)) {
+        try (Connection conn = getConnection();
+             PreparedStatement projectStmt = conn.prepareStatement(createProjectSql, Statement.RETURN_GENERATED_KEYS)) {
             projectStmt.setString(1, projectName != null ? projectName : "Shared UML Project");
             projectStmt.setInt(2, ownerId);
             projectStmt.executeUpdate();
@@ -345,25 +385,20 @@ public class DatabaseManager {
                 if (keys.next()) {
                     int newProjectId = keys.getInt(1);
 
-                    // Update diagram to link to this project
                     String updateDiagramSql = "UPDATE UML_Diagrams SET project_id = ? WHERE diagram_id = ?";
-                    try (PreparedStatement updateStmt = connection.prepareStatement(updateDiagramSql)) {
+                    try (PreparedStatement updateStmt = conn.prepareStatement(updateDiagramSql)) {
                         updateStmt.setInt(1, newProjectId);
                         updateStmt.setInt(2, diagramId);
                         updateStmt.executeUpdate();
                     }
 
-                    // Add owner as member (OWNER role)
                     addMemberToProject(newProjectId, ownerId, "OWNER");
-
-                    setLastError(null);
                     return newProjectId;
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error creating project: " + e.getMessage());
-            return -1;
+            logger.error("SQL error creating project: {}", e.getMessage());
+            throw e;
         }
         return -1;
     }
@@ -371,45 +406,42 @@ public class DatabaseManager {
     private boolean addMemberToProject(int projectId, int userId, String role) {
         String sql = "INSERT INTO Project_Members (project_id, user_id, role) VALUES (?, ?, ?) " +
                 "ON DUPLICATE KEY UPDATE role = VALUES(role), joined_at = NOW()";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, projectId);
             stmt.setInt(2, userId);
             stmt.setString(3, role.toUpperCase());
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error adding member: " + e.getMessage());
+            logger.error("SQL error adding member: {}", e.getMessage());
             return false;
         }
     }
 
     private void logDiagramHistory(int diagramId, int modifiedBy, String changeSummary) {
         String sql = "INSERT INTO Diagram_History (diagram_id, modified_by, change_summary) VALUES (?, ?, ?)";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, diagramId);
             stmt.setInt(2, modifiedBy);
             stmt.setString(3, changeSummary);
             stmt.executeUpdate();
         } catch (SQLException e) {
-            e.printStackTrace(); // Non-fatal
+            logger.warn("Failed to log diagram history (non-fatal): {}", e.getMessage());
         }
     }
 
-    // Deprecated: Use shareNotebookWithUser instead for non-duplicating shares
     @Deprecated
     public Integer duplicateNotebookForUser(int sourceDiagramId, int recipientUserId) throws SQLException {
-        // Legacy duplication logic (creates new row - avoid for collab)
         UMLDiagram src = getDiagramById(sourceDiagramId);
         if (src == null) {
-            if (lastError == null) setLastError("Source notebook not found");
+            setLastError("Source notebook not found");
             return null;
         }
-        if (!ensureConnection()) {
-            setLastError("Unable to duplicate notebook: no DB connection");
-            return null;
-        }
+        
         String insert = "INSERT INTO UML_Diagrams (diagram_name, owner_id, content, last_modified) VALUES (?, ?, ?, NOW())";
-        try (PreparedStatement stmt = connection.prepareStatement(insert, Statement.RETURN_GENERATED_KEYS)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(insert, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, src.getDiagramName());
             stmt.setInt(2, recipientUserId);
             if (src.getContent() != null) stmt.setBytes(3, src.getContent()); else stmt.setNull(3, Types.BLOB);
@@ -427,9 +459,8 @@ public class DatabaseManager {
             setLastError("Could not retrieve new diagram id");
             return null;
         } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error duplicating notebook: " + e.getMessage());
-            return null;
+            logger.error("SQL error duplicating notebook: {}", e.getMessage());
+            throw e;
         }
     }
 
@@ -460,12 +491,9 @@ public class DatabaseManager {
     }
 
     public UMLDiagram getDiagramById(int diagramId) throws SQLException {
-        if (!ensureConnection()) {
-            setLastError("Unable to fetch diagram: no DB connection");
-            return null;
-        }
         String sql = "SELECT diagram_id, diagram_name, project_id, owner_id, mongo_id, content, last_modified FROM UML_Diagrams WHERE diagram_id = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, diagramId);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -473,29 +501,19 @@ public class DatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
-            setLastError("SQL error fetching diagram: " + e.getMessage());
+            logger.error("SQL error fetching diagram: {}", e.getMessage());
+            throw e;
         }
         setLastError("Diagram " + diagramId + " not found");
         return null;
     }
 
-    private boolean ensureConnection() throws SQLException {
-        try {
-            if (connection == null || connection.isClosed()) {
-                connect();
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return connection != null && !connection.isClosed();
-    }
-
-    // Optional: Get history for a diagram
     public List<Map<String, Object>> getDiagramHistory(int diagramId) {
         List<Map<String, Object>> history = new ArrayList<>();
         String sql = "SELECT * FROM Diagram_History WHERE diagram_id = ? ORDER BY modified_at DESC";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, diagramId);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
@@ -508,7 +526,7 @@ public class DatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.error("Error fetching diagram history: {}", e.getMessage());
         }
         return history;
     }

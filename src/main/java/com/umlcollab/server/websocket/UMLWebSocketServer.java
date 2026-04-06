@@ -6,6 +6,8 @@ import com.umlcollab.server.db.DatabaseManager;
 import com.umlcollab.server.models.UMLDiagram;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.sql.SQLException;
@@ -14,44 +16,57 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServer {
+    private static final Logger logger = LoggerFactory.getLogger(UMLWebSocketServer.class);
+    
     private final DatabaseManager dbManager;
     private final Gson gson = new Gson();
 
     // Track connections per diagram: diagramId -> Set of WebSockets (thread-safe)
     private final ConcurrentHashMap<Integer, Set<WebSocket>> diagramConnections = new ConcurrentHashMap<>();
+    
+    // Track authenticated users per connection
+    private final ConcurrentHashMap<WebSocket, Integer> authenticatedUsers = new ConcurrentHashMap<>();
 
-    // Preferred constructor: Requires DB for full functionality
     public UMLWebSocketServer(DatabaseManager dbManager) {
-        super(new InetSocketAddress(8887)); // Port 8887
-        this.dbManager = dbManager != null ? dbManager : new DatabaseManager(); // Fallback if null
+        super(new InetSocketAddress(8887));
+        this.dbManager = dbManager;
+        logger.info("WebSocket server initialized on port 8887");
     }
 
-    // Fallback no-arg for basic testing (no DB)
     public UMLWebSocketServer() {
-        this(null); // Uses fallback DB
+        this(null);
     }
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
-        System.out.println("New connection: " + conn.getRemoteSocketAddress());
-        // Optional: Extract userId from handshake for auth
+        logger.info("New connection from: {}", conn.getRemoteSocketAddress());
     }
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-        System.out.println("Closed connection: " + conn.getRemoteSocketAddress() + " (code: " + code + ", reason: " + reason + ")");
+        logger.info("Connection closed: {} (code: {}, reason: {})", conn.getRemoteSocketAddress(), code, reason);
+        
         // Remove from all diagram groups
-        diagramConnections.values().forEach(clients -> clients.remove(conn));
+        for (Set<WebSocket> clients : diagramConnections.values()) {
+            clients.remove(conn);
+        }
+        
+        // Remove authenticated user
+        authenticatedUsers.remove(conn);
     }
 
     @Override
     public void onMessage(WebSocket conn, String message) {
-        System.out.println("Message received from " + conn.getRemoteSocketAddress() + ": " + message);
+        logger.debug("Message received from {}: {}", conn.getRemoteSocketAddress(), message);
+        
         try {
             JsonObject json = gson.fromJson(message, JsonObject.class);
             String type = json.get("type").getAsString();
 
             switch (type) {
+                case "auth":
+                    handleAuth(conn, json);
+                    break;
                 case "join":
                     handleJoin(conn, json);
                     break;
@@ -62,33 +77,65 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
                     sendError(conn, "Unknown message type: " + type);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Error processing message: {}", e.getMessage(), e);
             sendError(conn, "Invalid message format: " + e.getMessage());
         }
     }
 
-    private void handleJoin(WebSocket conn, JsonObject json) throws SQLException {
-        int diagramId = json.get("diagramId").getAsInt();
-        int userId = json.has("userId") ? json.get("userId").getAsInt() : -1; // For auth
+    private void handleAuth(WebSocket conn, JsonObject json) {
+        // Simple authentication - in production, use JWT or session-based auth
+        if (!json.has("userId") || !json.has("token")) {
+            sendError(conn, "Missing authentication credentials");
+            return;
+        }
+        
+        int userId = json.get("userId").getAsInt();
+        String token = json.get("token").getAsString();
+        
+        // In production, validate token against user
+        // For now, we just store the userId
+        authenticatedUsers.put(conn, userId);
+        logger.info("User {} authenticated", userId);
+        
+        JsonObject response = new JsonObject();
+        response.addProperty("type", "authResponse");
+        response.addProperty("success", true);
+        conn.send(gson.toJson(response));
+    }
 
-        // TODO: Auth check - verify user has access via dbManager.getAccessibleNotebooks(userId)
-        // For now, allow all
+    private void handleJoin(WebSocket conn, JsonObject json) throws SQLException {
+        if (!json.has("diagramId")) {
+            sendError(conn, "Missing diagramId");
+            return;
+        }
+        
+        int diagramId = json.get("diagramId").getAsInt();
+        
+        // For this demo, we allow unauthenticated joins
+        // In production, uncomment the following to enforce authentication:
+        // Integer userId = authenticatedUsers.get(conn);
+        // if (userId == null) {
+        //     sendError(conn, "Not authenticated - please authenticate first");
+        //     return;
+        // }
 
         // Add to group
-        Set<WebSocket> clients = diagramConnections.computeIfAbsent(diagramId, k -> Collections.newSetFromMap(new ConcurrentHashMap<>()));
+        Set<WebSocket> clients = diagramConnections.computeIfAbsent(diagramId, k -> 
+            Collections.newSetFromMap(new ConcurrentHashMap<>()));
         clients.add(conn);
 
-        System.out.println("Client joined diagram " + diagramId + " (total clients: " + clients.size() + ")");
+        logger.info("Client joined diagram {} (total clients: {})", diagramId, clients.size());
 
-        // Send initial state from DB (fallback to empty if no DB)
+        // Send initial state from DB
         JsonObject response = new JsonObject();
         response.addProperty("type", "initialState");
         response.addProperty("diagramId", diagramId);
-        String initialState = "[]"; // Default empty
+        
+        String initialState = "[]";
         if (dbManager != null) {
             UMLDiagram diagram = dbManager.getDiagramById(diagramId);
             if (diagram != null && diagram.getContent() != null) {
-                initialState = new String(diagram.getContent()); // Assume UTF-8 serialized
+                initialState = new String(diagram.getContent());
             }
         }
         response.addProperty("content", initialState);
@@ -96,9 +143,21 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
     }
 
     private void handleEdit(WebSocket conn, JsonObject json) throws SQLException {
+        if (!json.has("diagramId") || !json.has("delta")) {
+            sendError(conn, "Missing diagramId or delta");
+            return;
+        }
+        
         int diagramId = json.get("diagramId").getAsInt();
-        JsonObject delta = json.getAsJsonObject("delta");
-
+        
+        // For this demo, we allow unauthenticated edits
+        // In production, uncomment the following to enforce authentication:
+        // Integer userId = authenticatedUsers.get(conn);
+        // if (userId == null) {
+        //     sendError(conn, "Not authenticated - please authenticate first");
+        //     return;
+        // }
+        
         // Verify conn is in this diagram's group
         Set<WebSocket> clients = diagramConnections.get(diagramId);
         if (clients == null || !clients.contains(conn)) {
@@ -106,14 +165,20 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
             return;
         }
 
-        // Save full content (from client; TODO: merge delta)
-        String newContentStr = json.get("newContent").getAsString();
-        byte[] newContent = newContentStr.getBytes();
-        boolean saved = (dbManager != null) ? dbManager.updateNotebookContent(diagramId, newContent) : true; // Skip save if no DB
-
-        if (!saved) {
-            sendError(conn, "Failed to save edit: " + dbManager.getLastError());
-            return;
+        JsonObject delta = json.getAsJsonObject("delta");
+        
+        // Save content (in production, consider delta merge)
+        if (json.has("newContent")) {
+            String newContentStr = json.get("newContent").getAsString();
+            byte[] newContent = newContentStr.getBytes();
+            
+            if (dbManager != null) {
+                boolean saved = dbManager.updateNotebookContent(diagramId, newContent);
+                if (!saved) {
+                    sendError(conn, "Failed to save edit");
+                    return;
+                }
+            }
         }
 
         // Broadcast delta to others (exclude sender)
@@ -135,7 +200,7 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         ack.addProperty("success", true);
         conn.send(gson.toJson(ack));
 
-        System.out.println("Edit broadcast to diagram " + diagramId + " (delta: " + delta + ")");
+        logger.debug("Edit broadcast to diagram {}", diagramId);
     }
 
     private void sendError(WebSocket conn, String message) {
@@ -143,28 +208,19 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         error.addProperty("type", "error");
         error.addProperty("message", message);
         conn.send(gson.toJson(error));
-        System.err.println("Error sent to " + conn.getRemoteSocketAddress() + ": " + message);
+        logger.warn("Error sent to {}: {}", conn.getRemoteSocketAddress(), message);
     }
 
     @Override
     public void onError(WebSocket conn, Exception ex) {
-        ex.printStackTrace();
-        if (conn != null) {
-            System.err.println("Error on connection: " + conn.getRemoteSocketAddress());
-        }
+        logger.error("Error on connection {}: {}", conn != null ? conn.getRemoteSocketAddress() : "unknown", ex.getMessage(), ex);
     }
 
     @Override
     public void onStart() {
-        System.out.println("WebSocket server started on port: " + getPort());
+        logger.info("WebSocket server started on port: {}", getPort());
     }
 
-    @Override
-    public void start() {
-        super.start(); // CRITICAL: Launches acceptor/processor threads
-    }
-
-    // Utility for testing
     public Set<WebSocket> getClientsForDiagram(int diagramId) {
         return diagramConnections.getOrDefault(diagramId, Collections.emptySet());
     }
