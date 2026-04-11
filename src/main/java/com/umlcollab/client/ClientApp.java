@@ -34,10 +34,10 @@ public class ClientApp extends Application {
             try {
                 dbManager = new DatabaseManager();
                 dbManager.connect();
-                logger.info("Database connected successfully");
+                logger.info("Database connected locally");
             } catch (Exception e) {
                 logger.error("Failed to connect to database: {}", e.getMessage());
-                showErrorAndExit("Failed to connect to database. Please ensure the database is running and DB_PASSWORD environment variable is set.");
+                showErrorAndExit("Failed to connect to database. If using remote server, set UML_USE_REMOTE_API=true and UML_SERVER_ADDRESS=<server-ip>:8888");
                 return;
             }
         }
