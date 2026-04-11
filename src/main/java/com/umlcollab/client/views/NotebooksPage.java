@@ -79,7 +79,18 @@ public class NotebooksPage extends Application {
     // WebSocket for collaboration
     private WebSocketClient wsClient;
     private final Gson gson = new Gson();
-    private int userId; // Set via setter for join message
+    private int userId;
+
+    private static String getWebSocketServerAddress() {
+        String serverAddr = System.getenv("UML_SERVER_ADDRESS");
+        if (serverAddr == null || serverAddr.trim().isEmpty()) {
+            serverAddr = "localhost:8887";
+        }
+        if (!serverAddr.startsWith("ws://") && !serverAddr.startsWith("wss://")) {
+            serverAddr = "ws://" + serverAddr;
+        }
+        return serverAddr;
+    }
 
     // --- UNDO/REDO ---
     private final Deque<Command> undoStack = new ArrayDeque<>();
@@ -183,8 +194,10 @@ public class NotebooksPage extends Application {
 
     // --- WebSocket Integration ---
     private void connectWebSocket() {
+        String serverAddress = getWebSocketServerAddress();
+        System.out.println("Connecting to WebSocket server: " + serverAddress);
         try {
-            wsClient = new WebSocketClient(URI.create("ws://localhost:8887")) {
+            wsClient = new WebSocketClient(URI.create(serverAddress)) {
                 @Override
                 public void onOpen(ServerHandshake handshake) {
                     Platform.runLater(() -> {
