@@ -20,6 +20,10 @@ public class ServerConfig {
 
     public static boolean useRemoteApi() {
         String val = System.getenv("UML_USE_REMOTE_API");
+        // Default to true - use remote server unless explicitly set to false
+        if (val == null || val.isBlank()) {
+            return true;
+        }
         return "true".equalsIgnoreCase(val) || "1".equals(val);
     }
 }
