@@ -153,6 +153,51 @@ public class DatabaseManager {
         return null;
     }
 
+    public User validateUser(String email, String password) {
+        try {
+            User user = getUserByEmail(email);
+            if (user != null && verifyPassword(password, user.getPassword())) {
+                return user;
+            }
+        } catch (Exception e) {
+            logger.error("Error validating user: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    public User registerUser(String username, String email, String password) {
+        try {
+            if (getUserByEmail(email) != null) {
+                lastError = "Email already exists";
+                return null;
+            }
+            if (getUserByUsername(username) != null) {
+                lastError = "Username already exists";
+                return null;
+            }
+
+            String hashedPassword = hashPassword(password);
+            String sql = "INSERT INTO Users (username, email, password) VALUES (?, ?, ?)";
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                stmt.setString(1, username);
+                stmt.setString(2, email);
+                stmt.setString(3, hashedPassword);
+                stmt.executeUpdate();
+
+                ResultSet rs = stmt.getGeneratedKeys();
+                if (rs.next()) {
+                    int userId = rs.getInt(1);
+                    return new User(userId, username, email, hashedPassword, LocalDateTime.now());
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error registering user: {}", e.getMessage());
+            lastError = e.getMessage();
+        }
+        return null;
+    }
+
     public String hashPassword(String password) {
         // BCrypt generates a 60-character hash with salt
         return org.mindrot.jbcrypt.BCrypt.hashpw(password, BCrypt.gensalt(12));

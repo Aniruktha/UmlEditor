@@ -1,5 +1,6 @@
 package com.umlcollab.client.views;
 
+import com.umlcollab.client.ApiClient;
 import com.umlcollab.server.db.DatabaseManager;
 import com.umlcollab.server.models.User;
 import com.umlcollab.server.services.AuthService;
@@ -10,17 +11,23 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.function.Consumer;
 
 public class LoginPage {
+    private static final Logger logger = LoggerFactory.getLogger(LoginPage.class);
 
     private final DatabaseManager dbManager;
+    private final ApiClient apiClient;
     private final AuthService authService;
     private final Consumer<User> onLoginSuccess;
 
-    public LoginPage(DatabaseManager dbManager, Consumer<User> onLoginSuccess) {
+    public LoginPage(DatabaseManager dbManager, ApiClient apiClient, Consumer<User> onLoginSuccess) {
         this.dbManager = dbManager;
-        this.authService = new AuthService(dbManager);
+        this.apiClient = apiClient;
+        this.authService = dbManager != null ? new AuthService(dbManager) : null;
         this.onLoginSuccess = onLoginSuccess;
     }
 
@@ -32,10 +39,10 @@ public class LoginPage {
         lblTitle.setId("label-title");
         lblTitle.getStyleClass().add("label-title");
 
-        TextField txtUsername = new TextField();
-        txtUsername.setPromptText("Username");
-        txtUsername.setId("txtUsername");
-        txtUsername.getStyleClass().add("text-field");
+        TextField txtEmail = new TextField();
+        txtEmail.setPromptText("Email");
+        txtEmail.setId("txtEmail");
+        txtEmail.getStyleClass().add("text-field");
 
         PasswordField txtPassword = new PasswordField();
         txtPassword.setPromptText("Password");
@@ -54,7 +61,7 @@ public class LoginPage {
         lblMessage.setId("lblMessage");
         lblMessage.getStyleClass().add("label-message");
 
-        VBox card = new VBox(15, lblTitle, txtUsername, txtPassword, btnLogin, btnSignup, lblMessage);
+        VBox card = new VBox(15, lblTitle, txtEmail, txtPassword, btnLogin, btnSignup, lblMessage);
         card.setId("loginCard");
         card.getStyleClass().add("login-card");
         card.setAlignment(Pos.CENTER);
@@ -66,7 +73,6 @@ public class LoginPage {
 
         Scene scene = new Scene(root, 600, 480);
         
-        // Load CSS stylesheet
         loadStylesheet(scene);
 
         stage.setScene(scene);
@@ -74,39 +80,46 @@ public class LoginPage {
         stage.centerOnScreen();
         stage.show();
 
-        // Login Button
         btnLogin.setOnAction(e -> {
-            String username = txtUsername.getText().trim();
+            String email = txtEmail.getText().trim();
             String password = txtPassword.getText();
 
-            // Validation
-            if (username.isEmpty() || password.isEmpty()) {
-                lblMessage.setText("Username and password are required!");
+            if (email.isEmpty() || password.isEmpty()) {
+                lblMessage.setText("Email and password are required!");
                 lblMessage.setTextFill(Color.RED);
                 return;
             }
 
-            // Use AuthService for login
-            AuthService.LoginResult result = authService.loginUser(username, password);
-            
-            if (result.isSuccess()) {
+            boolean success = false;
+            User user = null;
+
+            if (apiClient != null) {
+                success = apiClient.login(email, password);
+                if (success) {
+                    user = new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
+                }
+            } else if (authService != null) {
+                AuthService.LoginResult result = authService.loginUser(email, password);
+                success = result.isSuccess();
+                user = result.getUser();
+            }
+
+            if (success && user != null) {
                 lblMessage.setText("Login successful!");
                 lblMessage.setTextFill(Color.GREEN);
                 stage.close();
-
                 if (onLoginSuccess != null) {
-                    onLoginSuccess.accept(result.getUser());
+                    onLoginSuccess.accept(user);
                 }
             } else {
-                lblMessage.setText(result.getMessage());
+                lblMessage.setText("Invalid credentials");
                 lblMessage.setTextFill(Color.RED);
             }
         });
 
-        // Sign-up Button
         btnSignup.setOnAction(e -> {
             stage.close();
-            new SigninPage(dbManager, onLoginSuccess).show();
+            new SigninPage(dbManager, apiClient, onLoginSuccess).show();
         });
     }
 

@@ -1,5 +1,6 @@
 package com.umlcollab.server;
 
+import com.umlcollab.server.api.ApiServer;
 import com.umlcollab.server.db.DatabaseManager;
 import com.umlcollab.server.websocket.UMLWebSocketServer;
 import org.slf4j.Logger;
@@ -19,15 +20,25 @@ public class ServerMain {
             System.exit(1);
         }
 
-        UMLWebSocketServer server = new UMLWebSocketServer(dbManager);
-        server.start();
-        
-        logger.info("Server started successfully on port 8887");
+        UMLWebSocketServer wsServer = new UMLWebSocketServer(dbManager);
+        wsServer.start();
+        logger.info("WebSocket server started on port 8887");
+
+        try {
+            ApiServer apiServer = new ApiServer(dbManager);
+            apiServer.start();
+            logger.info("API server started on port 8888");
+        } catch (Exception e) {
+            logger.error("Failed to start API server: {}", e.getMessage());
+            System.exit(1);
+        }
+
+        logger.info("Server started successfully");
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Shutting down server...");
             try {
-                server.stop(5000);
+                wsServer.stop(5000);
                 logger.info("WebSocket server stopped");
             } catch (InterruptedException e) {
                 logger.error("Error stopping WebSocket server", e);

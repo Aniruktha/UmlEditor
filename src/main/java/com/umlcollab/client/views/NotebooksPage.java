@@ -3,6 +3,7 @@ package com.umlcollab.client.views;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
+import com.umlcollab.client.ApiClient;
 import com.umlcollab.server.db.DatabaseManager;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -63,6 +64,7 @@ public class NotebooksPage extends Application {
     private String notebookName;
     private Integer notebookId;
     private DatabaseManager dbManager;
+    private ApiClient apiClient;
     private String initialContent;
     private boolean dirty = false;
     private boolean loadingState = false;
@@ -1140,6 +1142,10 @@ public class NotebooksPage extends Application {
 
     public void setDatabaseManager(DatabaseManager dbManager) {
         this.dbManager = dbManager;
+    }
+
+    public void setApiClient(ApiClient apiClient) {
+        this.apiClient = apiClient;
     }
 
     public void setAccessRole(String role) {

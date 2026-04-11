@@ -1,5 +1,6 @@
 package com.umlcollab.client;
 
+import com.umlcollab.client.config.ServerConfig;
 import com.umlcollab.client.views.LoginPage;
 import com.umlcollab.client.views.MyNotebooksPage;
 import com.umlcollab.server.db.DatabaseManager;
@@ -15,29 +16,46 @@ public class ClientApp extends Application {
     private static final Logger logger = LoggerFactory.getLogger(ClientApp.class);
 
     private DatabaseManager dbManager;
+    private ApiClient apiClient;
 
     @Override
     public void start(Stage primaryStage) {
         logger.info("Starting UML Editor Client...");
         
-        try {
-            dbManager = new DatabaseManager();
-            dbManager.connect();
-            logger.info("Database connected successfully");
-        } catch (Exception e) {
-            logger.error("Failed to connect to database: {}", e.getMessage());
-            showErrorAndExit("Failed to connect to database. Please ensure the database is running and DB_PASSWORD environment variable is set.");
-            return;
+        boolean useRemoteApi = ServerConfig.useRemoteApi();
+        String serverAddr = ServerConfig.getApiAddress();
+        
+        logger.info("Using remote API: {}, Server: {}", useRemoteApi, serverAddr);
+        
+        if (useRemoteApi) {
+            apiClient = new ApiClient(serverAddr);
+            logger.info("Client configured to use server API at {}", serverAddr);
+        } else {
+            try {
+                dbManager = new DatabaseManager();
+                dbManager.connect();
+                logger.info("Database connected successfully");
+            } catch (Exception e) {
+                logger.error("Failed to connect to database: {}", e.getMessage());
+                showErrorAndExit("Failed to connect to database. Please ensure the database is running and DB_PASSWORD environment variable is set.");
+                return;
+            }
         }
 
-        LoginPage loginPage = new LoginPage(dbManager, this::openMyNotebooksPage);
+        LoginPage loginPage = new LoginPage(dbManager, apiClient, this::openMyNotebooksPage);
         loginPage.show();
     }
 
     private void openMyNotebooksPage(User loggedInUser) {
         logger.info("User logged in: {}", loggedInUser.getUsername());
-        MyNotebooksPage notebooksPage = new MyNotebooksPage(dbManager, loggedInUser);
-        notebooksPage.showFullscreen();
+        
+        if (apiClient != null) {
+            MyNotebooksPage notebooksPage = new MyNotebooksPage(apiClient, loggedInUser);
+            notebooksPage.showFullscreen();
+        } else {
+            MyNotebooksPage notebooksPage = new MyNotebooksPage(dbManager, loggedInUser);
+            notebooksPage.showFullscreen();
+        }
     }
 
     private void showErrorAndExit(String message) {

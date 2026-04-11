@@ -1,5 +1,6 @@
 package com.umlcollab.client.views;
 
+import com.umlcollab.client.ApiClient;
 import com.umlcollab.server.db.DatabaseManager;
 import com.umlcollab.server.models.User;
 import com.umlcollab.server.services.AuthService;
@@ -15,12 +16,14 @@ import java.util.function.Consumer;
 public class SigninPage {
 
     private final DatabaseManager dbManager;
+    private final ApiClient apiClient;
     private final AuthService authService;
     private final Consumer<User> onLoginSuccess;
 
-    public SigninPage(DatabaseManager dbManager, Consumer<User> onLoginSuccess) {
+    public SigninPage(DatabaseManager dbManager, ApiClient apiClient, Consumer<User> onLoginSuccess) {
         this.dbManager = dbManager;
-        this.authService = new AuthService(dbManager);
+        this.apiClient = apiClient;
+        this.authService = dbManager != null ? new AuthService(dbManager) : null;
         this.onLoginSuccess = onLoginSuccess;
     }
 
@@ -77,7 +80,6 @@ public class SigninPage {
         stage.centerOnScreen();
         stage.show();
 
-        // Register Button
         btnRegister.setOnAction(e -> {
             String username = txtUsername.getText().trim();
             String email = txtEmail.getText().trim();
@@ -107,32 +109,41 @@ public class SigninPage {
                 return;
             }
 
-            AuthService.RegistrationResult result = authService.registerUser(username, email, password);
-            
-            if (result.isSuccess()) {
-                lblMessage.setText("Registration successful! Please login.");
-                lblMessage.setTextFill(Color.GREEN);
-                
-                AuthService.LoginResult loginResult = authService.loginUser(username, password);
-                if (loginResult.isSuccess()) {
-                    stage.close();
-                    if (onLoginSuccess != null) {
-                        onLoginSuccess.accept(loginResult.getUser());
+            boolean success = false;
+            User user = null;
+
+            if (apiClient != null) {
+                success = apiClient.register(username, email, password);
+                if (success) {
+                    success = apiClient.login(email, password);
+                    if (success) {
+                        user = new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
                     }
-                } else {
-                    stage.close();
-                    new LoginPage(dbManager, onLoginSuccess).show();
                 }
-            } else {
-                lblMessage.setText(result.getMessage());
-                lblMessage.setTextFill(Color.RED);
+            } else if (authService != null) {
+                AuthService.RegistrationResult result = authService.registerUser(username, email, password);
+                if (result.isSuccess()) {
+                    AuthService.LoginResult loginResult = authService.loginUser(email, password);
+                    success = loginResult.isSuccess();
+                    user = loginResult.getUser();
+                } else {
+                    lblMessage.setText(result.getMessage());
+                    lblMessage.setTextFill(Color.RED);
+                    return;
+                }
+            }
+
+            if (success && user != null) {
+                stage.close();
+                if (onLoginSuccess != null) {
+                    onLoginSuccess.accept(user);
+                }
             }
         });
         
-        // Back Button - returns to login page
         btnBack.setOnAction(e -> {
             stage.close();
-            new LoginPage(dbManager, onLoginSuccess).show();
+            new LoginPage(dbManager, apiClient, onLoginSuccess).show();
         });
     }
     
