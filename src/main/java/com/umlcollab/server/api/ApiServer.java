@@ -25,7 +25,8 @@ public class ApiServer {
 
     public ApiServer(DatabaseManager dbManager) throws IOException {
         this.dbManager = dbManager;
-        this.server = HttpServer.create(new InetSocketAddress(PORT), 0);
+        // Bind to all interfaces (0.0.0.0) instead of just localhost
+        this.server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 0);
         
         server.createContext("/api/login", this::handleLogin);
         server.createContext("/api/register", this::handleRegister);
@@ -42,25 +43,50 @@ public class ApiServer {
     }
 
     private void handleLogin(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
-        String body = new String(exchange.getRequestBody().readAllBytes());
-        JsonObject json = gson.fromJson(body, JsonObject.class);
-        
-        String email = json.get("email").getAsString();
-        String password = json.get("password").getAsString();
-        
-        User user = dbManager.validateUser(email, password);
-        
-        JsonObject response = new JsonObject();
-        if (user != null) {
-            response.addProperty("success", true);
-            response.addProperty("userId", user.getId());
-            response.addProperty("username", user.getUsername());
-            response.addProperty("email", user.getEmail());
-        } else {
-            response.addProperty("success", false);
-            response.addProperty("message", "Invalid credentials");
+        try {
+            String body = new String(exchange.getRequestBody().readAllBytes());
+            if (body.isEmpty()) {
+                sendErrorJson(exchange, "Empty request body");
+                return;
+            }
+            JsonObject json = gson.fromJson(body, JsonObject.class);
+            
+            if (!json.has("email") || !json.has("password")) {
+                sendErrorJson(exchange, "Missing email or password");
+                return;
+            }
+            
+            String email = json.get("email").getAsString();
+            String password = json.get("password").getAsString();
+            
+            logger.info("Login attempt for email: {}", email);
+            
+            User user = dbManager.validateUser(email, password);
+            
+            JsonObject response = new JsonObject();
+            if (user != null) {
+                logger.info("Login successful for user: {}", user.getUsername());
+                response.addProperty("success", true);
+                response.addProperty("userId", user.getId());
+                response.addProperty("username", user.getUsername());
+                response.addProperty("email", user.getEmail());
+            } else {
+                logger.warn("Login failed for email: {}", email);
+                response.addProperty("success", false);
+                response.addProperty("message", "Invalid credentials");
+            }
+            
+            sendJson(exchange, response);
+        } catch (Exception e) {
+            logger.error("Login error: {}", e.getMessage(), e);
+            sendErrorJson(exchange, "Server error: " + e.getMessage());
         }
-        
+    }
+
+    private void sendErrorJson(com.sun.net.httpserver.HttpExchange exchange, String message) throws IOException {
+        JsonObject response = new JsonObject();
+        response.addProperty("success", false);
+        response.addProperty("message", message);
         sendJson(exchange, response);
     }
 

@@ -46,9 +46,12 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
         logger.info("Connection closed: {} (code: {}, reason: {})", conn.getRemoteSocketAddress(), code, reason);
         
-        // Remove from all diagram groups
-        for (Set<WebSocket> clients : diagramConnections.values()) {
-            clients.remove(conn);
+        // Remove from all diagram groups (use synchronized block to avoid ConcurrentModificationException)
+        for (Integer diagramId : diagramConnections.keySet()) {
+            Set<WebSocket> clients = diagramConnections.get(diagramId);
+            if (clients != null) {
+                clients.remove(conn);
+            }
         }
         
         // Remove authenticated user
@@ -61,6 +64,10 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         
         try {
             JsonObject json = gson.fromJson(message, JsonObject.class);
+            if (json == null || !json.has("type")) {
+                sendError(conn, "Invalid message: missing type field");
+                return;
+            }
             String type = json.get("type").getAsString();
 
             switch (type) {

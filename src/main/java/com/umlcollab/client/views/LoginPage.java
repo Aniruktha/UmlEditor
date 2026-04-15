@@ -24,6 +24,15 @@ public class LoginPage {
     private final AuthService authService;
     private final Consumer<User> onLoginSuccess;
 
+    // Constructor for local database mode
+    public LoginPage(DatabaseManager dbManager, Consumer<User> onLoginSuccess) {
+        this.dbManager = dbManager;
+        this.apiClient = null;
+        this.authService = dbManager != null ? new AuthService(dbManager) : null;
+        this.onLoginSuccess = onLoginSuccess;
+    }
+
+    // Constructor for remote server mode (also supports local if dbManager provided)
     public LoginPage(DatabaseManager dbManager, ApiClient apiClient, Consumer<User> onLoginSuccess) {
         this.dbManager = dbManager;
         this.apiClient = apiClient;
@@ -90,29 +99,47 @@ public class LoginPage {
                 return;
             }
 
-            boolean success = false;
-            User user = null;
-
-            if (apiClient != null) {
-                success = apiClient.login(email, password);
-                if (success) {
-                    user = new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
-                }
-            } else if (authService != null) {
+            System.out.println("Login attempt - authService: " + (authService != null) + ", apiClient: " + (apiClient != null));
+            
+            // Try local database first
+            if (authService != null) {
+                System.out.println("Trying local database login...");
                 AuthService.LoginResult result = authService.loginUser(email, password);
-                success = result.isSuccess();
-                user = result.getUser();
-            }
-
-            if (success && user != null) {
-                lblMessage.setText("Login successful!");
-                lblMessage.setTextFill(Color.GREEN);
-                stage.close();
-                if (onLoginSuccess != null) {
-                    onLoginSuccess.accept(user);
+                if (result.isSuccess()) {
+                    lblMessage.setText("Login successful!");
+                    lblMessage.setTextFill(Color.GREEN);
+                    stage.close();
+                    if (onLoginSuccess != null) {
+                        onLoginSuccess.accept(result.getUser());
+                    }
+                    return;
+                } else {
+                    System.out.println("Local login failed: " + result.getMessage());
                 }
-            } else {
-                lblMessage.setText("Invalid credentials");
+            }
+            
+            // Try remote API if local failed or not available
+            if (apiClient != null) {
+                System.out.println("Trying remote API login...");
+                boolean success = apiClient.login(email, password);
+                if (success) {
+                    lblMessage.setText("Login successful!");
+                    lblMessage.setTextFill(Color.GREEN);
+                    stage.close();
+                    if (onLoginSuccess != null) {
+                        User user = new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
+                        onLoginSuccess.accept(user);
+                    }
+                    return;
+                } else {
+                    lblMessage.setText("Invalid credentials");
+                    lblMessage.setTextFill(Color.RED);
+                }
+            }
+            
+            // If neither worked
+            if (authService == null && apiClient == null) {
+                lblMessage.setText("No login method available!");
                 lblMessage.setTextFill(Color.RED);
             }
         });

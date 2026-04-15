@@ -20,10 +20,19 @@ public class SigninPage {
     private final AuthService authService;
     private final Consumer<User> onLoginSuccess;
 
+    // Constructor for local database mode
+    public SigninPage(DatabaseManager dbManager, Consumer<User> onLoginSuccess) {
+        this.dbManager = dbManager;
+        this.apiClient = null;
+        this.authService = dbManager != null ? new AuthService(dbManager) : null;
+        this.onLoginSuccess = onLoginSuccess;
+    }
+
+    // Constructor for remote server mode
     public SigninPage(DatabaseManager dbManager, ApiClient apiClient, Consumer<User> onLoginSuccess) {
         this.dbManager = dbManager;
         this.apiClient = apiClient;
-        this.authService = dbManager != null ? new AuthService(dbManager) : null;
+        this.authService = null;
         this.onLoginSuccess = onLoginSuccess;
     }
 
@@ -109,34 +118,45 @@ public class SigninPage {
                 return;
             }
 
-            boolean success = false;
-            User user = null;
-
-            if (apiClient != null) {
-                success = apiClient.register(username, email, password);
-                if (success) {
-                    success = apiClient.login(email, password);
-                    if (success) {
-                        user = new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
-                    }
-                }
-            } else if (authService != null) {
+            if (authService != null) {
                 AuthService.RegistrationResult result = authService.registerUser(username, email, password);
+                
                 if (result.isSuccess()) {
+                    lblMessage.setText("Registration successful! Please login.");
+                    lblMessage.setTextFill(Color.GREEN);
+                    
                     AuthService.LoginResult loginResult = authService.loginUser(email, password);
-                    success = loginResult.isSuccess();
-                    user = loginResult.getUser();
+                    if (loginResult.isSuccess()) {
+                        stage.close();
+                        if (onLoginSuccess != null) {
+                            onLoginSuccess.accept(loginResult.getUser());
+                        }
+                    }
                 } else {
                     lblMessage.setText(result.getMessage());
                     lblMessage.setTextFill(Color.RED);
-                    return;
                 }
+                return;
             }
-
-            if (success && user != null) {
-                stage.close();
-                if (onLoginSuccess != null) {
-                    onLoginSuccess.accept(user);
+            
+            // Try remote API if local auth service not available
+            if (apiClient != null) {
+                boolean success = apiClient.register(username, email, password);
+                if (success) {
+                    // Auto-login after registration
+                    success = apiClient.login(email, password);
+                    if (success) {
+                        lblMessage.setText("Registration successful!");
+                        lblMessage.setTextFill(Color.GREEN);
+                        stage.close();
+                        if (onLoginSuccess != null) {
+                            User user = new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
+                            onLoginSuccess.accept(user);
+                        }
+                    }
+                } else {
+                    lblMessage.setText("Registration failed. User may already exist.");
+                    lblMessage.setTextFill(Color.RED);
                 }
             }
         });

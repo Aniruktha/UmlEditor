@@ -22,25 +22,49 @@ public class ClientApp extends Application {
     public void start(Stage primaryStage) {
         logger.info("Starting UML Editor Client...");
         
-        boolean useRemoteApi = ServerConfig.useRemoteApi();
+        // Get configuration
         String serverAddr = ServerConfig.getApiAddress();
+        boolean useRemote = ServerConfig.useRemoteApi();
         
-        logger.info("Using remote API: {}, Server: {}", useRemoteApi, serverAddr);
+        System.out.println("Config - server: " + serverAddr + ", useRemote: " + useRemote);
         
-        if (useRemoteApi) {
-            apiClient = new ApiClient(serverAddr);
-            logger.info("Client configured to use server API at {}", serverAddr);
-        } else {
-            try {
+        // First, always try to set up local database
+        boolean dbConnected = false;
+        try {
+            System.out.println("Attempting local database connection...");
+            String dbPass = System.getenv("DB_PASSWORD");
+            System.out.println("DB_PASSWORD set: " + (dbPass != null && !dbPass.isEmpty()));
+            
+            if (dbPass != null && !dbPass.isEmpty()) {
                 dbManager = new DatabaseManager();
                 dbManager.connect();
-                logger.info("Database connected locally");
+                dbConnected = true;
+                System.out.println("Local database connected!");
+            } else {
+                System.out.println("DB_PASSWORD not set, skipping local DB");
+            }
+        } catch (Exception e) {
+            System.out.println("Local DB failed: " + e.getMessage());
+        }
+        
+        // If remote is configured and local failed, try remote
+        if (!dbConnected && useRemote) {
+            System.out.println("Trying remote server: " + serverAddr);
+            try {
+                apiClient = new ApiClient(serverAddr);
+                if (apiClient.testConnection()) {
+                    System.out.println("Connected to remote server!");
+                } else {
+                    System.out.println("Remote server not available");
+                    apiClient = null;
+                }
             } catch (Exception e) {
-                logger.error("Failed to connect to database: {}", e.getMessage());
-                showErrorAndExit("Failed to connect to database. If using remote server, set UML_USE_REMOTE_API=true and UML_SERVER_ADDRESS=<server-ip>:8888");
-                return;
+                System.out.println("Remote connection failed: " + e.getMessage());
+                apiClient = null;
             }
         }
+
+        System.out.println("Final - dbManager: " + (dbManager != null) + ", apiClient: " + (apiClient != null));
 
         LoginPage loginPage = new LoginPage(dbManager, apiClient, this::openMyNotebooksPage);
         loginPage.show();
@@ -61,7 +85,7 @@ public class ClientApp extends Application {
     private void showErrorAndExit(String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle("Connection Error");
-        alert.setHeaderText("Unable to connect to server");
+        alert.setHeaderText("Unable to connect");
         alert.setContentText(message);
         alert.setOnCloseRequest(e -> Platform.exit());
         alert.show();

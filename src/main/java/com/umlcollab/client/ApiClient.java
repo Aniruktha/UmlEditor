@@ -10,12 +10,12 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 
 public class ApiClient {
     private static final Gson gson = new Gson();
     private final String serverAddress;
-    private final HttpClient httpClient = HttpClient.newHttpClient();
     
     private int userId;
     private String username;
@@ -25,36 +25,82 @@ public class ApiClient {
         this.serverAddress = serverAddress;
     }
 
+    private HttpClient createClient() {
+        return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
+    }
+
+    public boolean testConnection() {
+        try {
+            HttpClient client = createClient();
+            JsonObject json = new JsonObject();
+            json.addProperty("email", "test@test.com");
+            json.addProperty("password", "test");
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://" + serverAddress + "/api/login"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(10))
+                    .POST(HttpRequest.BodyPublishers.ofString(json.toString()))
+                    .build();
+            
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            System.out.println("Test connection: " + response.statusCode());
+            return true;
+        } catch (Exception e) {
+            System.err.println("Connection test failed: " + e.getClass().getName() + " - " + e.getMessage());
+            return false;
+        }
+    }
+
     public boolean login(String email, String password) {
         try {
+            HttpClient client = createClient();
             JsonObject json = new JsonObject();
             json.addProperty("email", email);
             json.addProperty("password", password);
 
+            System.out.println("Attempting login to: http://" + serverAddress + "/api/login");
+
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://" + serverAddress + "/api/login"))
                     .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
                     .POST(HttpRequest.BodyPublishers.ofString(json.toString()))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            System.out.println("Login response status: " + response.statusCode());
+            
+            if (response.statusCode() != 200) {
+                System.err.println("Server error: " + response.body());
+                return false;
+            }
+            
             JsonObject result = gson.fromJson(response.body(), JsonObject.class);
 
-            if (result.get("success").getAsBoolean()) {
+            if (result.has("success") && result.get("success").getAsBoolean()) {
                 this.userId = result.get("userId").getAsInt();
                 this.username = result.get("username").getAsString();
                 this.email = result.get("email").getAsString();
                 return true;
+            } else {
+                String msg = result.has("message") ? result.get("message").getAsString() : "Unknown error";
+                System.err.println("Login failed: " + msg);
+                return false;
             }
-            return false;
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Login error: " + e.getClass().getName() + " - " + e.getMessage());
             return false;
         }
     }
 
     public boolean register(String username, String email, String password) {
         try {
+            HttpClient client = createClient();
             JsonObject json = new JsonObject();
             json.addProperty("username", username);
             json.addProperty("email", email);
@@ -63,45 +109,58 @@ public class ApiClient {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://" + serverAddress + "/api/register"))
                     .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
                     .POST(HttpRequest.BodyPublishers.ofString(json.toString()))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() != 200) {
+                System.err.println("Server error: " + response.body());
+                return false;
+            }
+            
             JsonObject result = gson.fromJson(response.body(), JsonObject.class);
 
-            if (result.get("success").getAsBoolean()) {
+            if (result.has("success") && result.get("success").getAsBoolean()) {
                 this.userId = result.get("userId").getAsInt();
                 this.username = result.get("username").getAsString();
                 this.email = email;
                 return true;
+            } else {
+                String msg = result.has("message") ? result.get("message").getAsString() : "Unknown error";
+                System.err.println("Registration failed: " + msg);
+                return false;
             }
-            return false;
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Registration error: " + e.getClass().getName() + " - " + e.getMessage());
             return false;
         }
     }
 
     public List<UMLDiagram> getNotebooks() {
         try {
+            HttpClient client = createClient();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://" + serverAddress + "/api/notebooks?userId=" + userId))
+                    .timeout(Duration.ofSeconds(30))
                     .GET()
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             JsonObject result = gson.fromJson(response.body(), JsonObject.class);
             JsonArray arr = result.getAsJsonArray("notebooks");
 
             return gson.fromJson(arr, new com.google.gson.reflect.TypeToken<List<UMLDiagram>>(){}.getType());
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Error getting notebooks: " + e.getMessage());
             return List.of();
         }
     }
 
     public int createNotebook(String name) {
         try {
+            HttpClient client = createClient();
             JsonObject json = new JsonObject();
             json.addProperty("userId", userId);
             json.addProperty("name", name);
@@ -109,24 +168,26 @@ public class ApiClient {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://" + serverAddress + "/api/notebook/create"))
                     .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
                     .POST(HttpRequest.BodyPublishers.ofString(json.toString()))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             JsonObject result = gson.fromJson(response.body(), JsonObject.class);
 
-            if (result.get("success").getAsBoolean()) {
+            if (result.has("success") && result.get("success").getAsBoolean()) {
                 return result.get("notebookId").getAsInt();
             }
             return -1;
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Error creating notebook: " + e.getMessage());
             return -1;
         }
     }
 
     public boolean shareNotebook(int diagramId, String email, String role) {
         try {
+            HttpClient client = createClient();
             JsonObject json = new JsonObject();
             json.addProperty("diagramId", diagramId);
             json.addProperty("ownerId", userId);
@@ -136,15 +197,16 @@ public class ApiClient {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://" + serverAddress + "/api/notebook/share"))
                     .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
                     .POST(HttpRequest.BodyPublishers.ofString(json.toString()))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             JsonObject result = gson.fromJson(response.body(), JsonObject.class);
 
-            return result.get("success").getAsBoolean();
+            return result.has("success") && result.get("success").getAsBoolean();
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Error sharing notebook: " + e.getMessage());
             return false;
         }
     }

@@ -216,19 +216,35 @@ public class NotebooksPage extends Application {
                 @Override
                 public void onMessage(String message) {
                     Platform.runLater(() -> {
-                        JsonObject json = gson.fromJson(message, JsonObject.class);
-                        String type = json.get("type").getAsString();
-                        if ("initialState".equals(type)) {
-                            // Sync initial state if needed (DB already loaded, but for late joins)
-                            String content = json.get("content").getAsString();
-                            loadFromJson(content);
-                        } else if ("edit".equals(type)) {
-                            JsonObject delta = json.getAsJsonObject("delta");
-                            applyDelta(delta);
-                        } else if ("error".equals(type)) {
-                            Alert alert = new Alert(Alert.AlertType.ERROR);
-                            alert.setContentText("Server Error: " + json.get("message").getAsString());
-                            alert.show();
+                        try {
+                            JsonObject json = gson.fromJson(message, JsonObject.class);
+                            if (json == null || !json.has("type")) {
+                                System.err.println("Invalid message: missing type field");
+                                return;
+                            }
+                            String type = json.get("type").getAsString();
+                            if ("initialState".equals(type)) {
+                                if (!json.has("content")) {
+                                    System.err.println("Missing content in initialState");
+                                    return;
+                                }
+                                String content = json.get("content").getAsString();
+                                loadFromJson(content);
+                            } else if ("edit".equals(type)) {
+                                if (!json.has("delta")) {
+                                    System.err.println("Missing delta in edit message");
+                                    return;
+                                }
+                                JsonObject delta = json.getAsJsonObject("delta");
+                                applyDelta(delta);
+                            } else if ("error".equals(type)) {
+                                String errMsg = json.has("message") ? json.get("message").getAsString() : "Unknown server error";
+                                Alert alert = new Alert(Alert.AlertType.ERROR);
+                                alert.setContentText("Server Error: " + errMsg);
+                                alert.show();
+                            }
+                        } catch (Exception e) {
+                            System.err.println("Error processing WebSocket message: " + e.getMessage());
                         }
                     });
                 }
@@ -308,19 +324,23 @@ public class NotebooksPage extends Application {
     }
 
     private void applyDelta(JsonObject delta) {
-        String action = delta.get("action").getAsString();
-        if ("add".equals(action)) {
-            // Create state from delta
-            ShapeState state = new ShapeState();
-            state.type = delta.get("type").getAsString();
-            state.layoutX = delta.get("layoutX").getAsDouble();
-            state.layoutY = delta.get("layoutY").getAsDouble();
-            if (delta.has("text")) state.text = delta.get("text").getAsString();
-            // Add more from delta
-            addShapeFromState(state);
+        try {
+            if (delta == null || !delta.has("action")) {
+                return;
+            }
+            String action = delta.get("action").getAsString();
+            if ("add".equals(action)) {
+                ShapeState state = new ShapeState();
+                if (delta.has("type")) state.type = delta.get("type").getAsString();
+                if (delta.has("layoutX")) state.layoutX = delta.get("layoutX").getAsDouble();
+                if (delta.has("layoutY")) state.layoutY = delta.get("layoutY").getAsDouble();
+                if (delta.has("text")) state.text = delta.get("text").getAsString();
+                addShapeFromState(state);
+            }
+            setDirty(true);
+        } catch (Exception e) {
+            System.err.println("Error applying delta: " + e.getMessage());
         }
-        // Add handlers for "delete", "move", "updateText", etc.
-        setDirty(true);
     }
 
     // --- Command Pattern for Undo/Redo ---

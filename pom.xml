@@ -192,7 +192,7 @@
                 </configuration>
             </plugin>
 
-            <!-- ✅ Exec Maven Plugin for running server -->
+            <!-- ✅ Exec Maven Plugin -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
@@ -203,29 +203,20 @@
                         <goals>
                             <goal>java</goal>
                         </goals>
+                        <configuration>
+                            <mainClass>com.umlcollab.server.ServerMain</mainClass>
+                        </configuration>
                     </execution>
-                </executions>
-                <configuration>
-                    <mainClass>com.umlcollab.server.ServerMain</mainClass>
-                </configuration>
-            </plugin>
-
-            <!-- ✅ Client run using javafx -->
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
                     <execution>
                         <id>run-client</id>
                         <goals>
                             <goal>java</goal>
                         </goals>
+                        <configuration>
+                            <mainClass>com.umlcollab.client.ClientApp</mainClass>
+                        </configuration>
                     </execution>
                 </executions>
-                <configuration>
-                    <mainClass>com.umlcollab.client.ClientApp</mainClass>
-                </configuration>
             </plugin>
 
             <!-- ✅ Shade Plugin for Fat JAR -->

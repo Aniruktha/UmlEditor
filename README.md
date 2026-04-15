@@ -226,14 +226,16 @@ Open a terminal and run:
 
 ```powershell
 cd UmlEditor
-mvn exec:java "-Dexec.mainClass=com.umlcollab.server.ServerMain"
+mvn compile exec:java -Dexec.executionId=run-server
 ```
 
 Expected output:
 ```
 INFO - Starting UML Editor Server...
 INFO - Database connected successfully with connection pooling
-INFO - Server started successfully on port 8887
+INFO - WebSocket server started on port 8887
+INFO - API server started on port 8888
+INFO - Server started successfully
 ```
 
 ### Step 2: Run the Client
