@@ -39,18 +39,22 @@ public class ApiClient {
             json.addProperty("email", "test@test.com");
             json.addProperty("password", "test");
             
+            String url = "http://" + serverAddress + "/api/login";
+            System.out.println(">>> Testing connection to: " + url);
+            
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("http://" + serverAddress + "/api/login"))
+                    .uri(URI.create(url))
                     .header("Content-Type", "application/json")
                     .timeout(Duration.ofSeconds(10))
                     .POST(HttpRequest.BodyPublishers.ofString(json.toString()))
                     .build();
             
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            System.out.println("Test connection: " + response.statusCode());
+            System.out.println(">>> Test connection response: " + response.statusCode());
             return true;
         } catch (Exception e) {
-            System.err.println("Connection test failed: " + e.getClass().getName() + " - " + e.getMessage());
+            System.err.println(">>> Connection test FAILED: " + e.getClass().getName() + " - " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
