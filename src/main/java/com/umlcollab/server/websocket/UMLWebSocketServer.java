@@ -28,9 +28,9 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
     private final ConcurrentHashMap<WebSocket, Integer> authenticatedUsers = new ConcurrentHashMap<>();
 
     public UMLWebSocketServer(DatabaseManager dbManager) {
-        super(new InetSocketAddress("0.0.0.0", 8887));
+        super(new InetSocketAddress("0.0.0.0", 8081));
         this.dbManager = dbManager;
-        logger.info("WebSocket server initialized on port 8887 (all interfaces)");
+        logger.info("WebSocket server initialized on port 8081 (all interfaces)");
     }
 
     public UMLWebSocketServer() {

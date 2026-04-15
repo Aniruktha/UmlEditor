@@ -21,7 +21,7 @@ public class ApiServer {
     
     private final DatabaseManager dbManager;
     private final HttpServer server;
-    private static final int PORT = 8888;
+    private static final int PORT = 8080;
 
     public ApiServer(DatabaseManager dbManager) throws IOException {
         this.dbManager = dbManager;
