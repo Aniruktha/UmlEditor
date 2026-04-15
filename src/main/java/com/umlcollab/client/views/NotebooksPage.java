@@ -86,12 +86,13 @@ public class NotebooksPage extends Application {
     private static String getWebSocketServerAddress() {
         String serverAddr = System.getenv("UML_SERVER_ADDRESS");
         if (serverAddr == null || serverAddr.trim().isEmpty()) {
-            serverAddr = "localhost:8081";
+            serverAddr = "localhost";
         }
-        if (!serverAddr.startsWith("ws://") && !serverAddr.startsWith("wss://")) {
-            serverAddr = "ws://" + serverAddr;
+        String wsAddr = serverAddr + ":8887";
+        if (!wsAddr.startsWith("ws://") && !wsAddr.startsWith("wss://")) {
+            wsAddr = "ws://" + wsAddr;
         }
-        return serverAddr;
+        return wsAddr;
     }
 
     // --- UNDO/REDO ---

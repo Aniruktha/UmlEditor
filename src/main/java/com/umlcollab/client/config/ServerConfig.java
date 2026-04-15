@@ -7,11 +7,20 @@ public class ServerConfig {
     }
 
     public static String getApiAddress() {
-        return getEnvOrDefault("UML_SERVER_ADDRESS", "localhost:8080");
+        String addr = getEnvOrDefault("UML_SERVER_ADDRESS", "localhost");
+        if (!addr.contains(":")) {
+            addr = addr + ":8080";
+        }
+        return addr;
     }
 
     public static String getWebSocketAddress() {
-        String wsAddr = getEnvOrDefault("UML_SERVER_ADDRESS", "localhost:8080");
+        String wsAddr = getEnvOrDefault("UML_SERVER_ADDRESS", "localhost");
+        if (!wsAddr.contains(":")) {
+            wsAddr = wsAddr + ":8887";
+        } else {
+            wsAddr = wsAddr.replace(":8080", ":8887").replace(":8081", ":8887");
+        }
         if (!wsAddr.startsWith("ws://") && !wsAddr.startsWith("wss://")) {
             wsAddr = "ws://" + wsAddr;
         }
@@ -20,8 +29,8 @@ public class ServerConfig {
 
     public static boolean useRemoteApi() {
         String val = System.getenv("UML_USE_REMOTE_API");
-        String serverAddr = getEnvOrDefault("UML_SERVER_ADDRESS", "localhost:8080");
-        if (!serverAddr.equals("localhost:8080") && !serverAddr.equals("8080")) {
+        String serverAddr = getEnvOrDefault("UML_SERVER_ADDRESS", "localhost");
+        if (!serverAddr.equals("localhost")) {
             return true;
         }
         return "true".equalsIgnoreCase(val) || "1".equals(val);
