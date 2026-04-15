@@ -4,6 +4,7 @@ import com.umlcollab.client.ApiClient;
 import com.umlcollab.server.db.DatabaseManager;
 import com.umlcollab.server.models.User;
 import com.umlcollab.server.services.AuthService;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -118,47 +119,60 @@ public class SigninPage {
                 return;
             }
 
-            if (authService != null) {
-                AuthService.RegistrationResult result = authService.registerUser(username, email, password);
-                
-                if (result.isSuccess()) {
-                    lblMessage.setText("Registration successful! Please login.");
-                    lblMessage.setTextFill(Color.GREEN);
-                    
-                    AuthService.LoginResult loginResult = authService.loginUser(email, password);
-                    if (loginResult.isSuccess()) {
-                        stage.close();
-                        if (onLoginSuccess != null) {
-                            onLoginSuccess.accept(loginResult.getUser());
+            lblMessage.setText("Registering...");
+            lblMessage.setTextFill(Color.BLUE);
+            btnRegister.setDisable(true);
+
+            Task<User> registerTask = new Task<>() {
+                @Override
+                protected User call() {
+                    if (authService != null) {
+                        AuthService.RegistrationResult result = authService.registerUser(username, email, password);
+                        if (result.isSuccess()) {
+                            AuthService.LoginResult loginResult = authService.loginUser(email, password);
+                            if (loginResult.isSuccess()) {
+                                return loginResult.getUser();
+                            }
                         }
                     }
-                } else {
-                    lblMessage.setText(result.getMessage());
-                    lblMessage.setTextFill(Color.RED);
+                    if (apiClient != null) {
+                        boolean success = apiClient.register(username, email, password);
+                        if (success) {
+                            success = apiClient.login(email, password);
+                            if (success) {
+                                return new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
+                            }
+                        }
+                    }
+                    return null;
                 }
-                return;
-            }
-            
-            // Try remote API if local auth service not available
-            if (apiClient != null) {
-                boolean success = apiClient.register(username, email, password);
-                if (success) {
-                    // Auto-login after registration
-                    success = apiClient.login(email, password);
-                    if (success) {
+
+                @Override
+                protected void succeeded() {
+                    btnRegister.setDisable(false);
+                    User user = getValue();
+                    if (user != null) {
                         lblMessage.setText("Registration successful!");
                         lblMessage.setTextFill(Color.GREEN);
                         stage.close();
                         if (onLoginSuccess != null) {
-                            User user = new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
                             onLoginSuccess.accept(user);
                         }
+                    } else {
+                        lblMessage.setText("Registration failed. User may already exist.");
+                        lblMessage.setTextFill(Color.RED);
                     }
-                } else {
-                    lblMessage.setText("Registration failed. User may already exist.");
+                }
+
+                @Override
+                protected void failed() {
+                    btnRegister.setDisable(false);
+                    lblMessage.setText("Error: " + getException().getMessage());
                     lblMessage.setTextFill(Color.RED);
                 }
-            }
+            };
+
+            new Thread(registerTask).start();
         });
         
         btnBack.setOnAction(e -> {

@@ -197,7 +197,7 @@ public class NotebooksPage extends Application {
     // --- WebSocket Integration ---
     private void connectWebSocket() {
         String serverAddress = getWebSocketServerAddress();
-        System.out.println("Connecting to WebSocket server: " + serverAddress);
+        System.out.println(">>> Connecting to WebSocket server: " + serverAddress);
         try {
             wsClient = new WebSocketClient(URI.create(serverAddress)) {
                 @Override
@@ -257,9 +257,10 @@ public class NotebooksPage extends Application {
                 @Override
                 public void onError(Exception ex) {
                     ex.printStackTrace();
+                    System.err.println(">>> WebSocket ERROR: " + ex.getClass().getName() + " - " + ex.getMessage());
                     Platform.runLater(() -> {
                         Alert alert = new Alert(Alert.AlertType.ERROR);
-                        alert.setContentText("WebSocket error: " + ex.getMessage());
+                        alert.setContentText("Cannot connect to server:\n" + ex.getMessage() + "\n\nMake sure server is running on " + serverAddress);
                         alert.show();
                     });
                 }

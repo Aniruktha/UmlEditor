@@ -4,6 +4,7 @@ import com.umlcollab.client.ApiClient;
 import com.umlcollab.server.db.DatabaseManager;
 import com.umlcollab.server.models.User;
 import com.umlcollab.server.services.AuthService;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -99,49 +100,54 @@ public class LoginPage {
                 return;
             }
 
-            System.out.println("Login attempt - authService: " + (authService != null) + ", apiClient: " + (apiClient != null));
-            
-            // Try local database first
-            if (authService != null) {
-                System.out.println("Trying local database login...");
-                AuthService.LoginResult result = authService.loginUser(email, password);
-                if (result.isSuccess()) {
-                    lblMessage.setText("Login successful!");
-                    lblMessage.setTextFill(Color.GREEN);
-                    stage.close();
-                    if (onLoginSuccess != null) {
-                        onLoginSuccess.accept(result.getUser());
+            lblMessage.setText("Logging in...");
+            lblMessage.setTextFill(Color.BLUE);
+            btnLogin.setDisable(true);
+
+            Task<User> loginTask = new Task<>() {
+                @Override
+                protected User call() {
+                    if (authService != null) {
+                        AuthService.LoginResult result = authService.loginUser(email, password);
+                        if (result.isSuccess()) {
+                            return result.getUser();
+                        }
                     }
-                    return;
-                } else {
-                    System.out.println("Local login failed: " + result.getMessage());
+                    if (apiClient != null) {
+                        boolean success = apiClient.login(email, password);
+                        if (success) {
+                            return new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
+                        }
+                    }
+                    return null;
                 }
-            }
-            
-            // Try remote API if local failed or not available
-            if (apiClient != null) {
-                System.out.println("Trying remote API login...");
-                boolean success = apiClient.login(email, password);
-                if (success) {
-                    lblMessage.setText("Login successful!");
-                    lblMessage.setTextFill(Color.GREEN);
-                    stage.close();
-                    if (onLoginSuccess != null) {
-                        User user = new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
-                        onLoginSuccess.accept(user);
+
+                @Override
+                protected void succeeded() {
+                    btnLogin.setDisable(false);
+                    User user = getValue();
+                    if (user != null) {
+                        lblMessage.setText("Login successful!");
+                        lblMessage.setTextFill(Color.GREEN);
+                        stage.close();
+                        if (onLoginSuccess != null) {
+                            onLoginSuccess.accept(user);
+                        }
+                    } else {
+                        lblMessage.setText("Invalid credentials");
+                        lblMessage.setTextFill(Color.RED);
                     }
-                    return;
-                } else {
-                    lblMessage.setText("Invalid credentials");
+                }
+
+                @Override
+                protected void failed() {
+                    btnLogin.setDisable(false);
+                    lblMessage.setText("Login failed: " + getException().getMessage());
                     lblMessage.setTextFill(Color.RED);
                 }
-            }
-            
-            // If neither worked
-            if (authService == null && apiClient == null) {
-                lblMessage.setText("No login method available!");
-                lblMessage.setTextFill(Color.RED);
-            }
+            };
+
+            new Thread(loginTask).start();
         });
 
         btnSignup.setOnAction(e -> {
