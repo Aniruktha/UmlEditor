@@ -112,8 +112,13 @@ public class LoginPage {
                         if (result.isSuccess()) {
                             return result.getUser();
                         }
-                    }
-                    if (apiClient != null) {
+                        if (apiClient != null) {
+                            boolean remoteSuccess = apiClient.login(email, password);
+                            if (remoteSuccess) {
+                                return new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);
+                            }
+                        }
+                    } else if (apiClient != null) {
                         boolean success = apiClient.login(email, password);
                         if (success) {
                             return new User(apiClient.getUserId(), apiClient.getUsername(), apiClient.getEmail(), null, null);

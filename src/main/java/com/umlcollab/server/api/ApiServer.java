@@ -33,6 +33,7 @@ public class ApiServer {
         server.createContext("/api/notebooks", this::handleNotebooks);
         server.createContext("/api/notebook/create", this::handleCreateNotebook);
         server.createContext("/api/notebook/share", this::handleShareNotebook);
+        server.createContext("/api/notebook/update", this::handleUpdateNotebook);
         
         server.setExecutor(null);
     }
@@ -43,16 +44,17 @@ public class ApiServer {
     }
 
     private void handleLogin(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         try {
             String body = new String(exchange.getRequestBody().readAllBytes());
             if (body.isEmpty()) {
-                sendErrorJson(exchange, "Empty request body");
+                sendErrorJson(exchange, 400, "Empty request body");
                 return;
             }
             JsonObject json = gson.fromJson(body, JsonObject.class);
             
             if (!json.has("email") || !json.has("password")) {
-                sendErrorJson(exchange, "Missing email or password");
+                sendErrorJson(exchange, 400, "Missing email or password");
                 return;
             }
             
@@ -70,24 +72,19 @@ public class ApiServer {
                 response.addProperty("userId", user.getId());
                 response.addProperty("username", user.getUsername());
                 response.addProperty("email", user.getEmail());
+                sendJson(exchange, response);
             } else {
                 logger.warn("Login failed for email: {}", email);
-                response.addProperty("success", false);
-                response.addProperty("message", "Invalid credentials");
+                sendErrorStatus(exchange, 401, "Invalid credentials");
             }
-            
-            sendJson(exchange, response);
         } catch (Exception e) {
             logger.error("Login error: {}", e.getMessage(), e);
-            sendErrorJson(exchange, "Server error: " + e.getMessage());
+            sendErrorStatus(exchange, 500, "Server error: " + e.getMessage());
         }
     }
 
     private void sendErrorJson(com.sun.net.httpserver.HttpExchange exchange, String message) throws IOException {
-        JsonObject response = new JsonObject();
-        response.addProperty("success", false);
-        response.addProperty("message", message);
-        sendJson(exchange, response);
+        sendErrorStatus(exchange, 500, message);
     }
 
     private void handleRegister(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
@@ -197,8 +194,28 @@ public class ApiServer {
         }
     }
 
+    private void handleUpdateNotebook(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
+        try {
+            String body = new String(exchange.getRequestBody().readAllBytes());
+            JsonObject json = gson.fromJson(body, JsonObject.class);
+            
+            int diagramId = json.get("diagramId").getAsInt();
+            String content = json.get("content").getAsString();
+            
+            boolean success = dbManager.updateNotebookContent(diagramId, content);
+            JsonObject response = new JsonObject();
+            response.addProperty("success", success);
+            
+            sendJson(exchange, response);
+        } catch (Exception e) {
+            logger.error("Error updating notebook: {}", e.getMessage());
+            sendError(exchange, e.getMessage());
+        }
+    }
+
     private void sendJson(com.sun.net.httpserver.HttpExchange exchange, JsonObject json) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         exchange.sendResponseHeaders(200, json.toString().getBytes().length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(json.toString().getBytes());
@@ -206,9 +223,18 @@ public class ApiServer {
     }
 
     private void sendError(com.sun.net.httpserver.HttpExchange exchange, String message) throws IOException {
+        sendErrorStatus(exchange, 500, message);
+    }
+
+    private void sendErrorStatus(com.sun.net.httpserver.HttpExchange exchange, int statusCode, String message) throws IOException {
         JsonObject response = new JsonObject();
         response.addProperty("success", false);
         response.addProperty("message", message);
-        sendJson(exchange, response);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        exchange.sendResponseHeaders(statusCode, response.toString().getBytes().length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(response.toString().getBytes());
+        }
     }
 }

@@ -90,7 +90,6 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
     }
 
     private void handleAuth(WebSocket conn, JsonObject json) {
-        // Simple authentication - in production, use JWT or session-based auth
         if (!json.has("userId") || !json.has("token")) {
             sendError(conn, "Missing authentication credentials");
             return;
@@ -99,10 +98,8 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         int userId = json.get("userId").getAsInt();
         String token = json.get("token").getAsString();
         
-        // In production, validate token against user
-        // For now, we just store the userId
         authenticatedUsers.put(conn, userId);
-        logger.info("User {} authenticated", userId);
+        logger.info("User {} authenticated via WebSocket", userId);
         
         JsonObject response = new JsonObject();
         response.addProperty("type", "authResponse");
@@ -118,22 +115,39 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         
         int diagramId = json.get("diagramId").getAsInt();
         
-        // For this demo, we allow unauthenticated joins
-        // In production, uncomment the following to enforce authentication:
-        // Integer userId = authenticatedUsers.get(conn);
-        // if (userId == null) {
-        //     sendError(conn, "Not authenticated - please authenticate first");
-        //     return;
-        // }
+        Integer userId = authenticatedUsers.get(conn);
+        if (userId == null) {
+            sendError(conn, "Not authenticated - please authenticate first");
+            return;
+        }
 
-        // Add to group
+        if (dbManager != null) {
+            UMLDiagram diagram = dbManager.getDiagramById(diagramId);
+            if (diagram == null) {
+                sendError(conn, "Diagram not found");
+                return;
+            }
+            if (diagram.getOwnerId() != userId) {
+                boolean hasAccess = false;
+                try {
+                    var accessible = dbManager.getAccessibleNotebooks(userId);
+                    hasAccess = accessible.stream().anyMatch(d -> d.getDiagramId() == diagramId);
+                } catch (Exception e) {
+                    logger.error("Error checking access: {}", e.getMessage());
+                }
+                if (!hasAccess) {
+                    sendError(conn, "You do not have permission to access this diagram");
+                    return;
+                }
+            }
+        }
+
         Set<WebSocket> clients = diagramConnections.computeIfAbsent(diagramId, k -> 
             Collections.newSetFromMap(new ConcurrentHashMap<>()));
         clients.add(conn);
 
-        logger.info("Client joined diagram {} (total clients: {})", diagramId, clients.size());
+        logger.info("User {} joined diagram {} (total clients: {})", userId, diagramId, clients.size());
 
-        // Send initial state from DB
         JsonObject response = new JsonObject();
         response.addProperty("type", "initialState");
         response.addProperty("diagramId", diagramId);
@@ -157,24 +171,41 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         
         int diagramId = json.get("diagramId").getAsInt();
         
-        // For this demo, we allow unauthenticated edits
-        // In production, uncomment the following to enforce authentication:
-        // Integer userId = authenticatedUsers.get(conn);
-        // if (userId == null) {
-        //     sendError(conn, "Not authenticated - please authenticate first");
-        //     return;
-        // }
+        Integer userId = authenticatedUsers.get(conn);
+        if (userId == null) {
+            sendError(conn, "Not authenticated - please authenticate first");
+            return;
+        }
         
-        // Verify conn is in this diagram's group
         Set<WebSocket> clients = diagramConnections.get(diagramId);
         if (clients == null || !clients.contains(conn)) {
             sendError(conn, "Not joined to this diagram");
             return;
         }
 
+        if (dbManager != null) {
+            UMLDiagram diagram = dbManager.getDiagramById(diagramId);
+            if (diagram != null && diagram.getOwnerId() != userId) {
+                boolean hasEditAccess = false;
+                try {
+                    var accessible = dbManager.getAccessibleNotebooks(userId);
+                    var ownedDiagram = accessible.stream().filter(d -> d.getDiagramId() == diagramId).findFirst();
+                    if (ownedDiagram.isPresent()) {
+                        String role = ownedDiagram.get().getAccessRole();
+                        hasEditAccess = "OWNER".equalsIgnoreCase(role) || "EDITOR".equalsIgnoreCase(role);
+                    }
+                } catch (Exception e) {
+                    logger.error("Error checking edit access: {}", e.getMessage());
+                }
+                if (!hasEditAccess) {
+                    sendError(conn, "You do not have permission to edit this diagram");
+                    return;
+                }
+            }
+        }
+
         JsonObject delta = json.getAsJsonObject("delta");
         
-        // Save content (in production, consider delta merge)
         if (json.has("newContent")) {
             String newContentStr = json.get("newContent").getAsString();
             
@@ -187,7 +218,6 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
             }
         }
 
-        // Broadcast delta to others (exclude sender)
         JsonObject broadcast = new JsonObject();
         broadcast.addProperty("type", "edit");
         broadcast.addProperty("diagramId", diagramId);
@@ -199,14 +229,13 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
             }
         }
 
-        // Ack sender
         JsonObject ack = new JsonObject();
         ack.addProperty("type", "editAck");
         ack.addProperty("diagramId", diagramId);
         ack.addProperty("success", true);
         conn.send(gson.toJson(ack));
 
-        logger.debug("Edit broadcast to diagram {}", diagramId);
+        logger.debug("Edit broadcast to diagram {} by user {}", diagramId, userId);
     }
 
     private void sendError(WebSocket conn, String message) {

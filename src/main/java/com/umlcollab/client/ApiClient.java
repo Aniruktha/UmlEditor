@@ -27,7 +27,7 @@ public class ApiClient {
 
     private HttpClient createClient() {
         return HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+                .connectTimeout(Duration.ofSeconds(30))
                 .version(HttpClient.Version.HTTP_1_1)
                 .build();
     }
@@ -51,7 +51,8 @@ public class ApiClient {
             
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             System.out.println(">>> Test connection response: " + response.statusCode());
-            return true;
+            // If we get ANY response (200, 400, 401, etc), server is running!
+            return response.statusCode() > 0;
         } catch (Exception e) {
             System.err.println(">>> Connection test FAILED: " + e.getClass().getName() + " - " + e.getMessage());
             e.printStackTrace();
@@ -211,6 +212,30 @@ public class ApiClient {
             return result.has("success") && result.get("success").getAsBoolean();
         } catch (Exception e) {
             System.err.println("Error sharing notebook: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public boolean updateNotebookContent(int diagramId, String content) {
+        try {
+            HttpClient client = createClient();
+            JsonObject json = new JsonObject();
+            json.addProperty("diagramId", diagramId);
+            json.addProperty("content", content);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://" + serverAddress + "/api/notebook/update"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .POST(HttpRequest.BodyPublishers.ofString(json.toString()))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            JsonObject result = gson.fromJson(response.body(), JsonObject.class);
+
+            return result.has("success") && result.get("success").getAsBoolean();
+        } catch (Exception e) {
+            System.err.println("Error updating notebook: " + e.getMessage());
             return false;
         }
     }

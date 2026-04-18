@@ -24,9 +24,10 @@ public class ClientApp extends Application {
         
         // Get configuration
         String serverAddr = ServerConfig.getApiAddress();
+        String wsAddr = ServerConfig.getWebSocketAddress();
         boolean useRemote = ServerConfig.useRemoteApi();
         
-        System.out.println("Config - server: " + serverAddr + ", useRemote: " + useRemote);
+        System.out.println(">>> Config - server: " + serverAddr + ", websocket: " + wsAddr + ", useRemote: " + useRemote);
         
         // First, always try to set up local database
         boolean dbConnected = false;

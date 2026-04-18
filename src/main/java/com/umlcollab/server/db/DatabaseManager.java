@@ -156,8 +156,14 @@ public class DatabaseManager {
     public User validateUser(String email, String password) {
         try {
             User user = getUserByEmail(email);
-            if (user != null && verifyPassword(password, user.getPassword())) {
-                return user;
+            logger.info(">>> validateUser: email={}, user found={}", email, user != null);
+            if (user != null) {
+                logger.info(">>> validateUser: stored password length={}", user.getPassword() != null ? user.getPassword().length() : "null");
+                boolean verified = verifyPassword(password, user.getPassword());
+                logger.info(">>> validateUser: password verified={}", verified);
+                if (verified) {
+                    return user;
+                }
             }
         } catch (Exception e) {
             logger.error("Error validating user: {}", e.getMessage());

@@ -27,7 +27,7 @@ public class ServerMain {
         try {
             ApiServer apiServer = new ApiServer(dbManager);
             apiServer.start();
-            logger.info("API server started on port 8888");
+            logger.info("API server started on port 8080");
         } catch (Exception e) {
             logger.error("Failed to start API server: {}", e.getMessage());
             System.exit(1);

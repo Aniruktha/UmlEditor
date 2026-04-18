@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.umlcollab.client.ApiClient;
+import com.umlcollab.client.config.ServerConfig;
 import com.umlcollab.server.db.DatabaseManager;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -84,14 +85,9 @@ public class NotebooksPage extends Application {
     private int userId;
 
     private static String getWebSocketServerAddress() {
-        String serverAddr = System.getenv("UML_SERVER_ADDRESS");
-        if (serverAddr == null || serverAddr.trim().isEmpty()) {
-            serverAddr = "localhost";
-        }
-        String wsAddr = serverAddr + ":8887";
-        if (!wsAddr.startsWith("ws://") && !wsAddr.startsWith("wss://")) {
-            wsAddr = "ws://" + wsAddr;
-        }
+        // Use ServerConfig for consistent address resolution
+        String wsAddr = ServerConfig.getWebSocketAddress();
+        System.out.println(">>> WebSocket address: " + wsAddr);
         return wsAddr;
     }
 
@@ -205,12 +201,11 @@ public class NotebooksPage extends Application {
                 public void onOpen(ServerHandshake handshake) {
                     Platform.runLater(() -> {
                         System.out.println("WebSocket connected for diagram " + notebookId);
-                        // Join room with userId
-                        JsonObject joinMsg = new JsonObject();
-                        joinMsg.addProperty("type", "join");
-                        joinMsg.addProperty("diagramId", notebookId);
-                        joinMsg.addProperty("userId", userId);
-                        send(gson.toJson(joinMsg));
+                        JsonObject authMsg = new JsonObject();
+                        authMsg.addProperty("type", "auth");
+                        authMsg.addProperty("userId", userId);
+                        authMsg.addProperty("token", "session");
+                        send(gson.toJson(authMsg));
                     });
                 }
 
@@ -224,7 +219,18 @@ public class NotebooksPage extends Application {
                                 return;
                             }
                             String type = json.get("type").getAsString();
-                            if ("initialState".equals(type)) {
+                            if ("authResponse".equals(type)) {
+                                boolean success = json.has("success") && json.get("success").getAsBoolean();
+                                if (!success) {
+                                    System.err.println("Authentication failed: " + (json.has("message") ? json.get("message").getAsString() : "Unknown error"));
+                                    return;
+                                }
+                                System.out.println("WebSocket authenticated, now joining diagram...");
+                                JsonObject joinMsg = new JsonObject();
+                                joinMsg.addProperty("type", "join");
+                                joinMsg.addProperty("diagramId", notebookId);
+                                send(gson.toJson(joinMsg));
+                            } else if ("initialState".equals(type)) {
                                 if (!json.has("content")) {
                                     System.err.println("Missing content in initialState");
                                     return;
@@ -252,18 +258,27 @@ public class NotebooksPage extends Application {
 
                 @Override
                 public void onClose(int code, String reason, boolean remote) {
-                    Platform.runLater(() -> System.out.println("WebSocket closed: " + reason));
+                    Platform.runLater(() -> {
+                        System.out.println("WebSocket closed: " + reason + " (code: " + code + ")");
+                        if (!readOnly && notebookId != null && code != 1000) {
+                            System.out.println("Attempting to reconnect in 3 seconds...");
+                            new java.util.Timer().schedule(new java.util.TimerTask() {
+                                @Override
+                                public void run() {
+                                    Platform.runLater(() -> {
+                                        if (wsClient == null || !wsClient.isOpen()) {
+                                            connectWebSocket();
+                                        }
+                                    });
+                                }
+                            }, 3000);
+                        }
+                    });
                 }
 
                 @Override
                 public void onError(Exception ex) {
-                    ex.printStackTrace();
                     System.err.println(">>> WebSocket ERROR: " + ex.getClass().getName() + " - " + ex.getMessage());
-                    Platform.runLater(() -> {
-                        Alert alert = new Alert(Alert.AlertType.ERROR);
-                        alert.setContentText("Cannot connect to server:\n" + ex.getMessage() + "\n\nMake sure server is running on " + serverAddress);
-                        alert.show();
-                    });
                 }
             };
             wsClient.connect();
@@ -957,8 +972,8 @@ public class NotebooksPage extends Application {
             new Alert(Alert.AlertType.INFORMATION, "This notebook is view-only. Changes cannot be saved.", ButtonType.OK).showAndWait();
             return false;
         }
-        if (dbManager == null || notebookId == null) {
-            new Alert(Alert.AlertType.WARNING, "Cannot save notebook: missing database connection or notebook id.", ButtonType.OK).showAndWait();
+        if (notebookId == null) {
+            new Alert(Alert.AlertType.WARNING, "Cannot save: missing notebook id.", ButtonType.OK).showAndWait();
             return false;
         }
 
@@ -966,7 +981,16 @@ public class NotebooksPage extends Application {
             List<ShapeState> states = captureCurrentState();
             String jsonContent = gson.toJson(states);
 
-            boolean success = dbManager.updateNotebookContent(notebookId, jsonContent);
+            boolean success = false;
+            if (dbManager != null) {
+                success = dbManager.updateNotebookContent(notebookId, jsonContent);
+            } else if (apiClient != null) {
+                success = apiClient.updateNotebookContent(notebookId, jsonContent);
+            } else {
+                new Alert(Alert.AlertType.WARNING, "Cannot save: no connection to server.", ButtonType.OK).showAndWait();
+                return false;
+            }
+            
             if (success) {
                 setDirty(false);
                 initialContent = jsonContent;
@@ -974,7 +998,7 @@ public class NotebooksPage extends Application {
                 new Alert(Alert.AlertType.ERROR, "Failed to save notebook. Please try again.", ButtonType.OK).showAndWait();
             }
             return success;
-        } catch (SQLException e) {
+        } catch (Exception e) {
             new Alert(Alert.AlertType.ERROR, "Error saving notebook: " + e.getMessage(), ButtonType.OK).showAndWait();
             return false;
         }
