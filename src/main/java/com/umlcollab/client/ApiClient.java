@@ -2,6 +2,7 @@ package com.umlcollab.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.umlcollab.server.models.UMLDiagram;
 import com.umlcollab.server.models.User;
@@ -11,6 +12,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 public class ApiClient {
@@ -144,6 +146,7 @@ public class ApiClient {
     }
 
     public List<UMLDiagram> getNotebooks() {
+        List<UMLDiagram> diagrams = new ArrayList<>();
         try {
             HttpClient client = createClient();
             HttpRequest request = HttpRequest.newBuilder()
@@ -156,10 +159,30 @@ public class ApiClient {
             JsonObject result = gson.fromJson(response.body(), JsonObject.class);
             JsonArray arr = result.getAsJsonArray("notebooks");
 
-            return gson.fromJson(arr, new com.google.gson.reflect.TypeToken<List<UMLDiagram>>(){}.getType());
+            for (JsonElement element : arr) {
+                JsonObject obj = element.getAsJsonObject();
+                UMLDiagram diagram = new UMLDiagram();
+                diagram.setDiagramId(obj.get("diagramId").getAsInt());
+                diagram.setDiagramName(obj.get("diagramName").getAsString());
+                if (obj.has("projectId") && !obj.get("projectId").isJsonNull()) {
+                    diagram.setProjectId(obj.get("projectId").getAsInt());
+                }
+                if (obj.has("ownerId") && !obj.get("ownerId").isJsonNull()) {
+                    diagram.setOwnerId(obj.get("ownerId").getAsInt());
+                }
+                if (obj.has("content") && !obj.get("content").isJsonNull()) {
+                    diagram.setContent(obj.get("content").getAsString());
+                }
+                if (obj.has("accessRole") && !obj.get("accessRole").isJsonNull()) {
+                    diagram.setAccessRole(obj.get("accessRole").getAsString());
+                }
+                diagrams.add(diagram);
+            }
+            return diagrams;
         } catch (Exception e) {
             System.err.println("Error getting notebooks: " + e.getMessage());
-            return List.of();
+            e.printStackTrace();
+            return diagrams;
         }
     }
 
