@@ -238,12 +238,14 @@ public class NotebooksPage extends Application {
                                 String content = json.get("content").getAsString();
                                 loadFromJson(content);
                             } else if ("edit".equals(type)) {
-                                if (!json.has("delta")) {
-                                    System.err.println("Missing delta in edit message");
-                                    return;
+                                if (json.has("newContent")) {
+                                    String content = json.get("newContent").getAsString();
+                                    System.out.println(">>> Received full state sync");
+                                    loadFromJson(content);
+                                } else if (json.has("delta")) {
+                                    JsonObject delta = json.getAsJsonObject("delta");
+                                    applyDelta(delta);
                                 }
-                                JsonObject delta = json.getAsJsonObject("delta");
-                                applyDelta(delta);
                             } else if ("error".equals(type)) {
                                 String errMsg = json.has("message") ? json.get("message").getAsString() : "Unknown server error";
                                 Alert alert = new Alert(Alert.AlertType.ERROR);
@@ -306,8 +308,9 @@ public class NotebooksPage extends Application {
         editMsg.addProperty("diagramId", notebookId);
         editMsg.add("delta", delta);
         // Send full content for simplicity (merge on server/client)
-        editMsg.addProperty("newContent", new String(captureCurrentStateBytes()));
-
+        String currentState = new String(captureCurrentStateBytes());
+        editMsg.addProperty("newContent", currentState);
+        System.out.println(">>> sendEdit: sending full state, size=" + currentState.length());
         wsClient.send(gson.toJson(editMsg));
     }
 
@@ -346,6 +349,8 @@ public class NotebooksPage extends Application {
                 return;
             }
             String action = delta.get("action").getAsString();
+            System.out.println(">>> applyDelta: action=" + action);
+            
             if ("add".equals(action)) {
                 ShapeState state = new ShapeState();
                 if (delta.has("type")) state.type = delta.get("type").getAsString();
@@ -353,10 +358,65 @@ public class NotebooksPage extends Application {
                 if (delta.has("layoutY")) state.layoutY = delta.get("layoutY").getAsDouble();
                 if (delta.has("text")) state.text = delta.get("text").getAsString();
                 addShapeFromState(state);
+            } else if ("move".equals(action)) {
+                if (delta.has("index") && delta.has("layoutX") && delta.has("layoutY")) {
+                    int index = delta.get("index").getAsInt();
+                    double newX = delta.get("layoutX").getAsDouble();
+                    double newY = delta.get("layoutY").getAsDouble();
+                    updateShapePosition(index, newX, newY);
+                }
+            } else if ("delete".equals(action)) {
+                if (delta.has("index")) {
+                    int index = delta.get("index").getAsInt();
+                    deleteShapeByIndex(index);
+                }
+            } else if ("edit".equals(action)) {
+                // Full state sync - reload everything
+                System.out.println(">>> Full state sync received");
             }
             setDirty(true);
         } catch (Exception e) {
             System.err.println("Error applying delta: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    private void updateShapePosition(int index, double newX, double newY) {
+        try {
+            int count = 0;
+            for (javafx.scene.Node node : canvas.getChildren()) {
+                if (node != gridPane) {
+                    if (count == index) {
+                        node.setLayoutX(newX);
+                        node.setLayoutY(newY);
+                        break;
+                    }
+                    count++;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error updating shape position: " + e.getMessage());
+        }
+    }
+    
+    private void deleteShapeByIndex(int index) {
+        try {
+            int count = 0;
+            javafx.scene.Node nodeToRemove = null;
+            for (javafx.scene.Node node : canvas.getChildren()) {
+                if (node != gridPane) {
+                    if (count == index) {
+                        nodeToRemove = node;
+                        break;
+                    }
+                    count++;
+                }
+            }
+            if (nodeToRemove != null) {
+                canvas.getChildren().remove(nodeToRemove);
+            }
+        } catch (Exception e) {
+            System.err.println("Error deleting shape: " + e.getMessage());
         }
     }
 

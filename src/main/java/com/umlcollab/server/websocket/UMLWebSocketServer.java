@@ -222,6 +222,12 @@ public class UMLWebSocketServer extends org.java_websocket.server.WebSocketServe
         broadcast.addProperty("type", "edit");
         broadcast.addProperty("diagramId", diagramId);
         broadcast.add("delta", delta);
+        
+        if (json.has("newContent")) {
+            String newContent = json.get("newContent").getAsString();
+            broadcast.addProperty("newContent", newContent);
+            logger.info(">>> Broadcasting edit to {} clients, content size={}", clients.size() - 1, newContent.length());
+        }
 
         for (WebSocket client : clients) {
             if (!client.equals(conn)) {
