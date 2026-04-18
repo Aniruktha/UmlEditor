@@ -48,13 +48,13 @@ public class ApiServer {
         try {
             String body = new String(exchange.getRequestBody().readAllBytes());
             if (body.isEmpty()) {
-                sendErrorJson(exchange, 400, "Empty request body");
+                sendErrorStatus(exchange, 400, "Empty request body");
                 return;
             }
             JsonObject json = gson.fromJson(body, JsonObject.class);
             
             if (!json.has("email") || !json.has("password")) {
-                sendErrorJson(exchange, 400, "Missing email or password");
+                sendErrorStatus(exchange, 400, "Missing email or password");
                 return;
             }
             
@@ -88,43 +88,64 @@ public class ApiServer {
     }
 
     private void handleRegister(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
-        String body = new String(exchange.getRequestBody().readAllBytes());
-        JsonObject json = gson.fromJson(body, JsonObject.class);
-        
-        String username = json.get("username").getAsString();
-        String email = json.get("email").getAsString();
-        String password = json.get("password").getAsString();
-        
-        User user = dbManager.registerUser(username, email, password);
-        
-        JsonObject response = new JsonObject();
-        if (user != null) {
-            response.addProperty("success", true);
-            response.addProperty("userId", user.getId());
-            response.addProperty("username", user.getUsername());
-        } else {
-            response.addProperty("success", false);
-            response.addProperty("message", dbManager.getLastError());
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        try {
+            String body = new String(exchange.getRequestBody().readAllBytes());
+            if (body.isEmpty()) {
+                sendErrorStatus(exchange, 400, "Empty request body");
+                return;
+            }
+            JsonObject json = gson.fromJson(body, JsonObject.class);
+            if (json == null || !json.has("username") || !json.has("email") || !json.has("password")) {
+                sendErrorStatus(exchange, 400, "Missing required fields");
+                return;
+            }
+            
+            String username = json.get("username").getAsString();
+            String email = json.get("email").getAsString();
+            String password = json.get("password").getAsString();
+            
+            User user = dbManager.registerUser(username, email, password);
+            
+            JsonObject response = new JsonObject();
+            if (user != null) {
+                response.addProperty("success", true);
+                response.addProperty("userId", user.getId());
+                response.addProperty("username", user.getUsername());
+            } else {
+                response.addProperty("success", false);
+                response.addProperty("message", dbManager.getLastError());
+            }
+            
+            sendJson(exchange, response);
+        } catch (Exception e) {
+            logger.error("Register error: {}", e.getMessage());
+            sendErrorStatus(exchange, 500, "Server error: " + e.getMessage());
         }
-        
-        sendJson(exchange, response);
     }
 
     private void handleNotebooks(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         try {
             String query = exchange.getRequestURI().getQuery();
+            if (query == null || !query.contains("userId=")) {
+                sendErrorStatus(exchange, 400, "Missing userId parameter");
+                return;
+            }
             int userId = Integer.parseInt(query.split("=")[1]);
             
             List<UMLDiagram> notebooks = dbManager.getAccessibleNotebooks(userId);
             
             JsonArray arr = new JsonArray();
-            for (UMLDiagram nb : notebooks) {
-                JsonObject obj = new JsonObject();
-                obj.addProperty("diagramId", nb.getDiagramId());
-                obj.addProperty("diagramName", nb.getDiagramName());
-                obj.addProperty("content", nb.getContent());
-                obj.addProperty("accessRole", nb.getAccessRole());
-                arr.add(obj);
+            if (notebooks != null) {
+                for (UMLDiagram nb : notebooks) {
+                    JsonObject obj = new JsonObject();
+                    obj.addProperty("diagramId", nb.getDiagramId());
+                    obj.addProperty("diagramName", nb.getDiagramName());
+                    obj.addProperty("content", nb.getContent());
+                    obj.addProperty("accessRole", nb.getAccessRole());
+                    arr.add(obj);
+                }
             }
             
             JsonObject response = new JsonObject();
@@ -132,15 +153,20 @@ public class ApiServer {
             
             sendJson(exchange, response);
         } catch (Exception e) {
-            logger.error("Error getting notebooks: {}", e.getMessage());
-            sendError(exchange, e.getMessage());
+            logger.error("Error getting notebooks: {}", e.getMessage(), e);
+            sendErrorStatus(exchange, 500, "Server error: " + e.getMessage());
         }
     }
 
     private void handleCreateNotebook(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         try {
             String body = new String(exchange.getRequestBody().readAllBytes());
             JsonObject json = gson.fromJson(body, JsonObject.class);
+            if (json == null || !json.has("userId") || !json.has("name")) {
+                sendErrorStatus(exchange, 400, "Missing required fields");
+                return;
+            }
             
             int userId = json.get("userId").getAsInt();
             String name = json.get("name").getAsString();
@@ -158,15 +184,20 @@ public class ApiServer {
             
             sendJson(exchange, response);
         } catch (Exception e) {
-            logger.error("Error creating notebook: {}", e.getMessage());
-            sendError(exchange, e.getMessage());
+            logger.error("Error creating notebook: {}", e.getMessage(), e);
+            sendErrorStatus(exchange, 500, "Server error: " + e.getMessage());
         }
     }
 
     private void handleShareNotebook(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         try {
             String body = new String(exchange.getRequestBody().readAllBytes());
             JsonObject json = gson.fromJson(body, JsonObject.class);
+            if (json == null || !json.has("diagramId") || !json.has("ownerId") || !json.has("email") || !json.has("role")) {
+                sendErrorStatus(exchange, 400, "Missing required fields");
+                return;
+            }
             
             int diagramId = json.get("diagramId").getAsInt();
             int ownerId = json.get("ownerId").getAsInt();
@@ -189,15 +220,20 @@ public class ApiServer {
             
             sendJson(exchange, response);
         } catch (Exception e) {
-            logger.error("Error sharing notebook: {}", e.getMessage());
-            sendError(exchange, e.getMessage());
+            logger.error("Error sharing notebook: {}", e.getMessage(), e);
+            sendErrorStatus(exchange, 500, "Server error: " + e.getMessage());
         }
     }
 
     private void handleUpdateNotebook(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         try {
             String body = new String(exchange.getRequestBody().readAllBytes());
             JsonObject json = gson.fromJson(body, JsonObject.class);
+            if (json == null || !json.has("diagramId") || !json.has("content")) {
+                sendErrorStatus(exchange, 400, "Missing required fields");
+                return;
+            }
             
             int diagramId = json.get("diagramId").getAsInt();
             String content = json.get("content").getAsString();
@@ -208,8 +244,8 @@ public class ApiServer {
             
             sendJson(exchange, response);
         } catch (Exception e) {
-            logger.error("Error updating notebook: {}", e.getMessage());
-            sendError(exchange, e.getMessage());
+            logger.error("Error updating notebook: {}", e.getMessage(), e);
+            sendErrorStatus(exchange, 500, "Server error: " + e.getMessage());
         }
     }
 
