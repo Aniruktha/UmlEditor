@@ -142,6 +142,8 @@ public class ApiServer {
                     JsonObject obj = new JsonObject();
                     obj.addProperty("diagramId", nb.getDiagramId());
                     obj.addProperty("diagramName", nb.getDiagramName());
+                    if (nb.getProjectId() != null) obj.addProperty("projectId", nb.getProjectId());
+                    if (nb.getOwnerId() != null) obj.addProperty("ownerId", nb.getOwnerId());
                     obj.addProperty("content", nb.getContent());
                     obj.addProperty("accessRole", nb.getAccessRole());
                     arr.add(obj);

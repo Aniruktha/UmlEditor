@@ -1,6 +1,8 @@
 package com.umlcollab.server.models;
 
+import com.google.gson.annotations.JsonAdapter;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 public class UMLDiagram {
     private int diagramId;
@@ -52,6 +54,10 @@ public class UMLDiagram {
 
     public LocalDateTime getLastModified() { return lastModified; }
     public void setLastModified(LocalDateTime lastModified) { this.lastModified = lastModified; }
+
+    public String getLastModifiedString() {
+        return lastModified != null ? lastModified.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) : null;
+    }
 
     public String getAccessRole() { return accessRole; }
     public void setAccessRole(String accessRole) { this.accessRole = accessRole; }
