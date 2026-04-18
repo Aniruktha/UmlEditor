@@ -133,40 +133,51 @@ public class DatabaseManager {
             return null;
         }
 
-        String sql = "SELECT * FROM Users WHERE email = ?";
+        String sql = "SELECT * FROM Users WHERE LOWER(email) = LOWER(?)";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, email.trim());
             ResultSet rs = stmt.executeQuery();
 
             if (rs.next()) {
-                int id = rs.getInt("user_id");
+                int id = -1;
+                try { id = rs.getInt("user_id"); } catch (SQLException e) { 
+                    try { id = rs.getInt("id"); } catch (SQLException e2) {}
+                }
                 String username = rs.getString("username");
                 String password = rs.getString("password");
-                Timestamp ts = rs.getTimestamp("created_at");
+                Timestamp ts = null;
+                try { ts = rs.getTimestamp("created_at"); } catch (SQLException e) {}
                 LocalDateTime createdAt = ts != null ? ts.toLocalDateTime() : null;
+                logger.info(">>> getUserByEmail found: id={}, username={}", id, username);
                 return new User(id, username, email.trim(), password, createdAt);
             }
         } catch (SQLException e) {
-            logger.error("Error fetching user by email: {}", e.getMessage());
+            logger.error("Error fetching user by email: {}", e.getMessage(), e);
         }
         return null;
     }
 
     public User validateUser(String email, String password) {
+        logger.info(">>> validateUser START: email={}, password provided={}", email, password != null ? "yes" : "no");
         try {
             User user = getUserByEmail(email);
-            logger.info(">>> validateUser: email={}, user found={}", email, user != null);
-            if (user != null) {
-                logger.info(">>> validateUser: stored password length={}", user.getPassword() != null ? user.getPassword().length() : "null");
-                boolean verified = verifyPassword(password, user.getPassword());
-                logger.info(">>> validateUser: password verified={}", verified);
-                if (verified) {
-                    return user;
-                }
+            logger.info(">>> validateUser: user found={}", user != null);
+            if (user == null) {
+                logger.warn(">>> User NOT FOUND for email: {}", email);
+                return null;
+            }
+            logger.info(">>> validateUser: stored password length={}, hash starts with={}", 
+                user.getPassword() != null ? user.getPassword().length() : "null",
+                user.getPassword() != null ? user.getPassword().substring(0, Math.min(10, user.getPassword().length())) : "N/A");
+            boolean verified = verifyPassword(password, user.getPassword());
+            logger.info(">>> validateUser: password verified={}", verified);
+            if (verified) {
+                logger.info(">>> validateUser: SUCCESS for user {}", user.getUsername());
+                return user;
             }
         } catch (Exception e) {
-            logger.error("Error validating user: {}", e.getMessage());
+            logger.error("Error validating user: {}", e.getMessage(), e);
         }
         return null;
     }
